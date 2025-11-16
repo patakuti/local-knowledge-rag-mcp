@@ -6,10 +6,10 @@ import { config } from 'dotenv'
 import os from 'os'
 import lockfile from 'proper-lockfile'
 
-// Load .env file from project root (two levels up from dist/)
+// Load .env file from project root (one level up from dist/)
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = dirname(__filename)
-const envPath = join(__dirname, '..', '..', '.env')
+const envPath = join(__dirname, '..', '.env')
 const envResult = config({ path: envPath })
 
 // Warn if .env file is not found (but don't fail - env vars might be set elsewhere)
