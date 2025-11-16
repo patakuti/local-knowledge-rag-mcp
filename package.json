@@ -2,12 +2,12 @@
   "name": "local-knowledge-rag-mcp",
   "version": "1.0.0",
   "description": "Local Knowledge RAG MCP Server - Semantic search and retrieval for local documents using vector embeddings",
-  "main": "dist/src/mcp-server.js",
+  "main": "dist/mcp-server.js",
   "type": "module",
   "scripts": {
     "build": "tsc",
     "dev": "tsc --watch",
-    "start": "node dist/src/mcp-server.js",
+    "start": "node dist/mcp-server.js",
     "test": "jest",
     "lint": "eslint src/**/*.ts",
     "lint:fix": "eslint src/**/*.ts --fix"

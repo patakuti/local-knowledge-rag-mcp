@@ -5,7 +5,7 @@ import { dirname, join } from 'path'
 import { config } from 'dotenv'
 import { appendFileSync, mkdirSync } from 'fs'
 
-// Load .env file from project root (two levels up from dist/src/)
+// Load .env file from project root (two levels up from dist/)
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = dirname(__filename)
 const envPath = join(__dirname, '..', '..', '.env')
