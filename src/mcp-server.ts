@@ -6,10 +6,10 @@ import { config } from 'dotenv'
 import os from 'os'
 import lockfile from 'proper-lockfile'
 
-// Load .env file from project root (two levels up from dist/src/)
+// Load .env file from project root (one level up from dist/)
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = dirname(__filename)
-const envPath = join(__dirname, '..', '..', '.env')
+const envPath = join(__dirname, '..', '.env')
 const envResult = config({ path: envPath })
 
 // Warn if .env file is not found (but don't fail - env vars might be set elsewhere)
@@ -73,8 +73,8 @@ class SmartComposerRAGServer {
   constructor() {
     this.sessionManager = new SessionManagerImpl(10)
     // Use absolute path to templates directory (from project root)
-    // __dirname is dist/src, so we need to go up two levels to reach project root
-    const templatesPath = join(__dirname, '..', '..', 'templates')
+    // __dirname is dist, so we need to go up one level to reach project root
+    const templatesPath = join(__dirname, '..', 'templates')
     this.templateEngine = new TemplateEngine(templatesPath)
     // BrowserFlag will be initialized after RAGEngine is created (to get workspace ID)
     this.browserFlag = new BrowserFlag() // Temporary, will be replaced

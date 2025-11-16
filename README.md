@@ -116,7 +116,7 @@ Add this MCP server to your Claude Code configuration:
   "mcpServers": {
     "local-knowledge-rag": {
       "command": "node",
-      "args": ["/path/to/local-knowledge-rag-mcp/dist/src/mcp-server.js"]
+      "args": ["/path/to/local-knowledge-rag-mcp/dist/mcp-server.js"]
     }
   }
 }

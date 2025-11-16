@@ -2,7 +2,7 @@
   "mcpServers": {
     "local-knowledge-rag": {
       "command": "node",
-      "args": ["/path/to/local-knowledge-rag-mcp/dist/src/mcp-server.js"],
+      "args": ["/path/to/local-knowledge-rag-mcp/dist/mcp-server.js"],
       "env": {
         "WORKSPACE_PATH": "/path/to/your/knowledge/base",
         "DATABASE_URL": "postgresql://user:password@localhost:5432/local_knowledge_rag",
