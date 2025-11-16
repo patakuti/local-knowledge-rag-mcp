@@ -1,0 +1,20 @@
+{
+  "embedding": {
+    "provider": "openai-compatible",
+    "model": "your-model-name",
+    "dimensions": 1536
+  },
+  "chunking": {
+    "chunkSize": 1000,
+    "chunkOverlap": 200
+  },
+  "search": {
+    "minSimilarity": 0.7,
+    "maxResults": 20,
+    "maxChunks": 10
+  },
+  "indexing": {
+    "include": ["**/*.md", "**/*.txt"],
+    "exclude": ["**/node_modules/**", "**/.git/**"]
+  }
+}

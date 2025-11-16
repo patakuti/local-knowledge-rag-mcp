@@ -1,0 +1,56 @@
+# Dependencies
+node_modules/
+npm-debug.log*
+
+# Build outputs
+dist/
+build/
+*.tsbuildinfo
+
+# Environment variables
+.env
+.env.local
+.env.*.local
+
+# Database files (legacy, no longer used)
+*.db
+*.db-shm
+*.db-wal
+
+# Logs
+*.log
+logs/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Claude Code
+.claude/
+# CLAUDE.md
+
+# Serena
+.serena/
+
+# Temporary files
+tmp/
+temp/
+*.tmp
+*.temp
+
+# Test coverage
+coverage/
+.nyc_output/
+
+# RCS
+RCS/

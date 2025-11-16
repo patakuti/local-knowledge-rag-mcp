@@ -1,0 +1,78 @@
+{
+  "name": "paper",
+  "description": "Academic paper style with numbered citations [1], [2], etc.",
+  "language": "en",
+  "variables": {
+    "title": {
+      "type": "string",
+      "description": "Paper title (same as the search query or custom title)",
+      "required": true
+    },
+    "generated_at": {
+      "type": "string",
+      "description": "Timestamp when the report was generated",
+      "required": true
+    },
+    "abstract": {
+      "type": "string",
+      "description": "Abstract summarizing the findings (3-5 sentences)",
+      "required": true
+    },
+    "body": {
+      "type": "string",
+      "description": "Main body text with numbered citations like [1], [2]. Use markdown links for citations: [1](#ref-1), [2](#ref-2), etc. Each citation refers to a reference entry.",
+      "required": true
+    },
+    "references": {
+      "type": "array",
+      "description": "Array of references cited in the body",
+      "required": true,
+      "items": {
+        "type": "object",
+        "description": "A single reference entry",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "Reference number (e.g., '1', '2', '3')",
+            "required": true
+          },
+          "file_path": {
+            "type": "string",
+            "description": "Relative file path",
+            "required": true
+          },
+          "line_range": {
+            "type": "string",
+            "description": "Line range (e.g., '42-50')",
+            "required": true
+          },
+          "file_uri": {
+            "type": "string",
+            "description": "Full file URI with line anchor (will be automatically encoded by MCP)",
+            "required": true
+          }
+        }
+      }
+    }
+  },
+  "example": {
+    "title": "Analysis of React Hooks Implementation",
+    "generated_at": "2025/10/13 14:30:00",
+    "abstract": "This paper examines the implementation of React hooks across the codebase. We identify key patterns and architectural decisions that enable functional components to manage state and side effects.",
+    "body": "React hooks revolutionized functional component development [[1]](#ref-1). The useState hook provides state management capabilities [[2]](#ref-2), while useEffect handles side effects [[3]](#ref-3). These primitives enable complex component logic without class components.",
+    "references": [
+      {
+        "id": "1",
+        "file_path": "src/hooks/index.ts",
+        "line_range": "1-10",
+        "file_uri": "file:///workspace/src/hooks/index.ts#L1"
+      },
+      {
+        "id": "2",
+        "file_path": "src/hooks/useState.ts",
+        "line_range": "15-25",
+        "file_uri": "file:///workspace/src/hooks/useState.ts#L15"
+      }
+    ]
+  }
+}

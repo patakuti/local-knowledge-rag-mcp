@@ -1,0 +1,66 @@
+{
+  "name": "basic",
+  "description": "Basic report format with sections for each file",
+  "language": "en",
+  "variables": {
+    "query": {
+      "type": "string",
+      "description": "The search query or report title",
+      "required": true
+    },
+    "generated_at": {
+      "type": "string",
+      "description": "Timestamp when the report was generated (automatically added)",
+      "required": true
+    },
+    "overall_summary": {
+      "type": "string",
+      "description": "Overall summary of all findings (3-5 sentences)",
+      "required": true
+    },
+    "sections": {
+      "type": "array",
+      "description": "Array of file sections, each containing information about one relevant file",
+      "required": true,
+      "items": {
+        "type": "object",
+        "description": "Information about one relevant file",
+        "properties": {
+          "file_name_with_line": {
+            "type": "string",
+            "description": "File name with line number (e.g., 'example.ts:42')",
+            "required": true
+          },
+          "file_uri": {
+            "type": "string",
+            "description": "File URI with line anchor (e.g., 'file:///path/to/file.ts#L42')",
+            "required": true
+          },
+          "section_summary": {
+            "type": "string",
+            "description": "Summary of what this file contains related to the query (2-3 sentences)",
+            "required": true
+          },
+          "section_quote": {
+            "type": "string",
+            "description": "Most relevant code/text excerpt from the file (maximum 5-10 lines)",
+            "required": true
+          }
+        }
+      }
+    }
+  },
+  "example": {
+    "query": "React hooks implementation",
+    "generated_at": "2025/10/13 14:30:00",
+    "overall_summary": "This report analyzes React hooks implementation across the codebase. Hooks provide a way to use state and lifecycle features in functional components.",
+    "sections": [
+      {
+        "file_name_with_line": "src/hooks/useState.ts:15",
+        "file_uri": "file:///workspace/src/hooks/useState.ts#L15",
+        "section_summary": "Implementation of useState hook that manages component state.",
+        "section_quote": "export function useState<T>(initialState: T): [T, (newState: T) => void] {\n  const [state, setState] = React.useState(initialState);\n  return [state, setState];\n}"
+      }
+    ]
+  }
+}

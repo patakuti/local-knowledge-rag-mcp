@@ -1,0 +1,79 @@
+{
+  "name": "bullet_points",
+  "description": "Bullet-point style report focusing on key findings",
+  "language": "en",
+  "variables": {
+    "title": {
+      "type": "string",
+      "description": "Report title (same as search query or custom title)",
+      "required": true
+    },
+    "generated_at": {
+      "type": "string",
+      "description": "Timestamp when the report was generated",
+      "required": true
+    },
+    "summary": {
+      "type": "string",
+      "description": "Brief summary of findings (2-3 sentences)",
+      "required": true
+    },
+    "key_points": {
+      "type": "array",
+      "description": "Array of key findings as bullet points",
+      "required": true,
+      "items": {
+        "type": "object",
+        "description": "A single key finding",
+        "properties": {
+          "heading": {
+            "type": "string",
+            "description": "Short heading for this point (3-5 words)",
+            "required": true
+          },
+          "description": {
+            "type": "string",
+            "description": "Description of this finding (1-2 sentences)",
+            "required": true
+          },
+          "file_name": {
+            "type": "string",
+            "description": "Source file name with line number",
+            "required": true
+          },
+          "file_uri": {
+            "type": "string",
+            "description": "File URI with line anchor",
+            "required": true
+          },
+          "quote": {
+            "type": "string",
+            "description": "Relevant code/text excerpt (3-5 lines max)",
+            "required": true
+          }
+        }
+      }
+    }
+  },
+  "example": {
+    "title": "TypeScript Async Patterns",
+    "generated_at": "2025/10/13 14:30:00",
+    "summary": "Modern async/await patterns in TypeScript enable clean asynchronous code. This report highlights key implementation patterns and best practices.",
+    "key_points": [
+      {
+        "heading": "Promise with Generic Types",
+        "description": "Type-safe promise handling using TypeScript generics for better error checking and IDE support.",
+        "file_name": "src/utils/fetch.ts:15",
+        "file_uri": "file:///workspace/src/utils/fetch.ts#L15",
+        "quote": "async function fetchData<T>(url: string): Promise<T> {\n  const response = await fetch(url);\n  return response.json();\n}"
+      },
+      {
+        "heading": "Error Handling Pattern",
+        "description": "Structured error handling with try-catch blocks ensures graceful failure and proper cleanup.",
+        "file_name": "src/services/api.ts:42",
+        "file_uri": "file:///workspace/src/services/api.ts#L42",
+        "quote": "try {\n  const result = await operation();\n  return result;\n} catch (error) {\n  logger.error('Operation failed', error);\n  throw error;\n}"
+      }
+    ]
+  }
+}
