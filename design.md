@@ -336,10 +336,10 @@ All environment variables are configured and used on the **MCP server side**. MC
 
 *Indexing:*
 - `RAG_INCLUDE_PATTERNS`: Comma-separated glob patterns (default: "**/*.md,**/*.txt")
-- `RAG_EXCLUDE_PATTERNS`: Comma-separated glob patterns (default: "**/node_modules/**,**/.git/**")
+- `RAG_EXCLUDE_PATTERNS`: Comma-separated glob patterns. Custom patterns are merged with built-in defaults: node_modules, .git, dist, build, logs, cache, etc. The report output directory (rag-reports) is always excluded automatically.
+- `RAG_REPORT_OUTPUT_DIR`: Report output directory (default: rag-reports, automatically excluded from indexing regardless of RAG_EXCLUDE_PATTERNS)
 
 *Report:*
-- `RAG_REPORT_OUTPUT_DIR`: Report output directory (default: rag-reports, automatically excluded from indexing)
 - `RAG_MAX_QUOTE_LINES`: Maximum lines in quotes (default: 5)
 - `RAG_REMOVE_BLANK_LINES`: Remove blank lines in reports (default: true)
 - `RAG_DEFAULT_TEMPLATE`: Default template name (default: basic)
