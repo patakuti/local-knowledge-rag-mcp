@@ -107,7 +107,10 @@ function loadIndexingConfigFromEnv(): IndexingConfig {
       ? process.env.RAG_INCLUDE_PATTERNS.split(',').map(s => s.trim())
       : defaultInclude,
     excludePatterns: process.env.RAG_EXCLUDE_PATTERNS
-      ? process.env.RAG_EXCLUDE_PATTERNS.split(',').map(s => s.trim())
+      ? [
+          ...process.env.RAG_EXCLUDE_PATTERNS.split(',').map(s => s.trim()),
+          reportExcludePattern
+        ]
       : defaultExclude,
   }
 }
