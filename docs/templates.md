@@ -62,7 +62,7 @@ General manual/handbook style with numbered chapters and sources.
 
 **Chapter object:**
 - `number` (string): Chapter number
-- `title` (string): Chapter title
+- `chapter_title` (string): Chapter title
 - `content` (string): Chapter content with citations
 
 **Source object:**

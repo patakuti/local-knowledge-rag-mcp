@@ -31,7 +31,7 @@
             "description": "Chapter number (e.g., '1', '2', '3')",
             "required": true
           },
-          "title": {
+          "chapter_title": {
             "type": "string",
             "description": "Chapter title",
             "required": true
@@ -83,12 +83,12 @@
     "chapters": [
       {
         "number": "1",
-        "title": "Basic Commands",
+        "chapter_title": "Basic Commands",
         "content": "Git provides essential commands for version control. The `git init` command initializes a repository [[1]](#ref-1), while `git clone` creates a local copy [[2]](#ref-2). These commands form the foundation of Git workflows."
       },
       {
         "number": "2",
-        "title": "Branching Strategy",
+        "chapter_title": "Branching Strategy",
         "content": "Branching enables parallel development. The `git branch` command manages branches [[3]](#ref-3), and `git checkout` switches between them [[4]](#ref-4). This strategy isolates feature development from the main codebase."
       }
     ],

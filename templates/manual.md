@@ -9,7 +9,7 @@
 ## Chapters
 
 {{#chapters}}
-### Chapter {{number}}: {{title}}
+### Chapter {{number}}: {{chapter_title}}
 
 {{content}}
 
