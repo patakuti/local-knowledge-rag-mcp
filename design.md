@@ -419,6 +419,7 @@ This MCP server provides **template schemas as MCP Resources**, allowing MCP cli
 - **`template://basic/schema`** - Schema for the "basic" template
 - **`template://paper/schema`** - Schema for the "paper" template
 - **`template://bullet_points/schema`** - Schema for the "bullet_points" template
+- **`template://manual/schema`** - Schema for the "manual" template
 
 ### Implementation Details
 
@@ -450,6 +451,7 @@ This MCP server provides **template schemas as MCP Resources**, allowing MCP cli
   - `basic`: Standard format (sections by file)
   - `paper`: Academic paper format (numbered citations [1], [2])
   - `bullet_points`: Bullet-point format
+  - `manual`: General manual/handbook format (overview, numbered chapters, sources)
 
 ### create_rag_report (recommended)
 
@@ -460,7 +462,7 @@ This MCP server provides **template schemas as MCP Resources**, allowing MCP cli
     - Call `get_template_schema` if you need to see the exact schema for a specific template
   - `template` (optional): Template name
     - **RECOMMENDED**: Omit this parameter to use the workspace default template
-    - Only specify if you need a different format (available: default, paper, bullet_points)
+    - Only specify if you need a different format (available: default, paper, bullet_points, manual)
   - `output_dir` (optional): Output directory (default: "./rag-reports")
   - `file_name` (optional): Custom filename (.md extension, timestamp added as prefix)
   - `ascii_filename` (optional): Descriptive filename in English (ASCII only)

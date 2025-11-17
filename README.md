@@ -216,7 +216,7 @@ Claude will automatically:
 
 **Advanced:** For direct MCP tool usage and detailed parameters, see [docs/mcp-tools.md](docs/mcp-tools.md).
 
-**Report customization:** Reports are saved to `./rag-reports/` by default. You can create custom templates - see [docs/templates.md](docs/templates.md).
+**Report customization:** Reports are saved to `./rag-reports/` by default. You can create custom templates (built-in: `basic`, `paper`, `bullet_points`, `manual`) - see [docs/templates.md](docs/templates.md).
 
 ---
 

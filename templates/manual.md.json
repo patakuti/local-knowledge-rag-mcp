@@ -1,0 +1,122 @@
+{
+  "name": "manual",
+  "description": "General manual/handbook style with numbered chapters and sources",
+  "language": "en",
+  "variables": {
+    "title": {
+      "type": "string",
+      "description": "Manual title (same as the search query or custom title)",
+      "required": true
+    },
+    "generated_at": {
+      "type": "string",
+      "description": "Timestamp when the report was generated",
+      "required": true
+    },
+    "overview": {
+      "type": "string",
+      "description": "Overview section summarizing the manual content (3-5 sentences)",
+      "required": true
+    },
+    "chapters": {
+      "type": "array",
+      "description": "Array of chapters",
+      "required": true,
+      "items": {
+        "type": "object",
+        "description": "A single chapter entry",
+        "properties": {
+          "number": {
+            "type": "string",
+            "description": "Chapter number (e.g., '1', '2', '3')",
+            "required": true
+          },
+          "chapter_title": {
+            "type": "string",
+            "description": "Chapter title",
+            "required": true
+          },
+          "content": {
+            "type": "string",
+            "description": "Chapter content with numbered citations like [1], [2]. Use markdown links for citations: [1](#ref-1), [2](#ref-2), etc. Each citation refers to a source entry.",
+            "required": true
+          }
+        }
+      }
+    },
+    "sources": {
+      "type": "array",
+      "description": "Array of sources cited in the chapters",
+      "required": true,
+      "items": {
+        "type": "object",
+        "description": "A single source entry",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "Source number (e.g., '1', '2', '3')",
+            "required": true
+          },
+          "file_path": {
+            "type": "string",
+            "description": "Relative file path",
+            "required": true
+          },
+          "line_range": {
+            "type": "string",
+            "description": "Line range (e.g., '42-50')",
+            "required": true
+          },
+          "file_uri": {
+            "type": "string",
+            "description": "Full file URI with line anchor (will be automatically encoded by MCP)",
+            "required": true
+          }
+        }
+      }
+    }
+  },
+  "example": {
+    "title": "Git Commands User Manual",
+    "generated_at": "2025/10/13 14:30:00",
+    "overview": "This manual provides a comprehensive guide to Git commands used in this project. It covers basic operations, branching strategies, and collaboration workflows. The content is organized into chapters for easy reference.",
+    "chapters": [
+      {
+        "number": "1",
+        "chapter_title": "Basic Commands",
+        "content": "Git provides essential commands for version control. The `git init` command initializes a repository [[1]](#ref-1), while `git clone` creates a local copy [[2]](#ref-2). These commands form the foundation of Git workflows."
+      },
+      {
+        "number": "2",
+        "chapter_title": "Branching Strategy",
+        "content": "Branching enables parallel development. The `git branch` command manages branches [[3]](#ref-3), and `git checkout` switches between them [[4]](#ref-4). This strategy isolates feature development from the main codebase."
+      }
+    ],
+    "sources": [
+      {
+        "id": "1",
+        "file_path": "docs/git-basics.md",
+        "line_range": "10-20",
+        "file_uri": "file:///workspace/docs/git-basics.md#L10"
+      },
+      {
+        "id": "2",
+        "file_path": "docs/git-basics.md",
+        "line_range": "25-35",
+        "file_uri": "file:///workspace/docs/git-basics.md#L25"
+      },
+      {
+        "id": "3",
+        "file_path": "docs/branching.md",
+        "line_range": "5-15",
+        "file_uri": "file:///workspace/docs/branching.md#L5"
+      },
+      {
+        "id": "4",
+        "file_path": "docs/branching.md",
+        "line_range": "20-30",
+        "file_uri": "file:///workspace/docs/branching.md#L20"
+      }
+    ]
+  }
+}

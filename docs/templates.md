@@ -49,6 +49,28 @@ Bullet points style for quick summaries.
 - `title` (string): Report title
 - `points` (array): Array of bullet point strings
 
+### manual
+
+General manual/handbook style with numbered chapters and sources.
+
+**Variables:**
+- `title` (string): Manual title
+- `generated_at` (string): Generation timestamp
+- `overview` (string): Overview section summary
+- `chapters` (array): Array of chapter objects
+- `sources` (array): Array of source objects
+
+**Chapter object:**
+- `number` (string): Chapter number
+- `chapter_title` (string): Chapter title
+- `content` (string): Chapter content with citations
+
+**Source object:**
+- `id` (string): Source number
+- `file_path` (string): File path
+- `line_range` (string): Line range
+- `file_uri` (string): Clickable file URI
+
 ---
 
 ## Template Syntax
