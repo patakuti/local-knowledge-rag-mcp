@@ -1,5 +1,5 @@
 import { readFile, writeFile, mkdir, readdir } from 'fs/promises'
-import { dirname, join, resolve } from 'path'
+import { dirname, join, resolve, relative } from 'path'
 import { existsSync } from 'fs'
 import type { SearchResult, AnswerTemplate, GenerateAnswerParams, GenerateReportParams, ReportSection, RAGConfig, TemplateMetadata, GenerateAnswerParamsV2 } from '../types/rag.types.js'
 import { sanitizePathGeneric } from '../utils/log-sanitizer.js'
@@ -687,5 +687,39 @@ export class TemplateEngine {
 
   private extractFileName(path: string): string {
     return path.split('/').pop() || path
+  }
+
+  /**
+   * Generate relative file URI for Markdown links
+   * Converts absolute path to relative path from report directory
+   * @param absolutePath - Absolute path to the target file
+   * @param reportDir - Directory where the report will be saved
+   * @param lineStart - Optional start line number
+   * @param lineEnd - Optional end line number
+   * @returns Relative path with optional line anchor
+   */
+  private generateRelativeFileUri(
+    absolutePath: string,
+    reportDir: string,
+    lineStart?: number,
+    lineEnd?: number
+  ): string {
+    // Calculate relative path from report directory to target file
+    const relativePath = relative(reportDir, absolutePath)
+
+    // Ensure forward slashes for consistency (even on Windows)
+    const normalizedPath = relativePath.replace(/\\/g, '/')
+
+    // Add line anchor if provided
+    if (lineStart !== undefined && lineEnd !== undefined && lineStart !== lineEnd) {
+      // Line range for multi-line quotes
+      return `${normalizedPath}#L${lineStart}-L${lineEnd}`
+    } else if (lineStart !== undefined) {
+      // Single line
+      return `${normalizedPath}#L${lineStart}`
+    } else {
+      // No line number
+      return normalizedPath
+    }
   }
 }

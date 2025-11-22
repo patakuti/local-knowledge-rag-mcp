@@ -9,7 +9,7 @@
 
 {{#key_points}}
   - **{{heading}}**: {{description}}
-    - Source: <a href="{{file_uri}}">{{file_name}}</a>
+    - Source: [{{file_name}}]({{file_uri}})
     - Reference:
       ```
       {{quote}}
