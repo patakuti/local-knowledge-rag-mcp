@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 import { fileURLToPath } from 'url'
-import { dirname, join, resolve } from 'path'
+import { dirname, join, resolve, relative } from 'path'
 import { config } from 'dotenv'
 import os from 'os'
 import lockfile from 'proper-lockfile'
