@@ -9,7 +9,7 @@
 ## Details
 
 {{#sections}}
-### <a href="{{file_uri}}">{{file_name_with_line}}</a>
+### [{{file_name_with_line}}]({{file_uri}})
 
 {{section_summary}}
 

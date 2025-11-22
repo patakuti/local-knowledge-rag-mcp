@@ -927,14 +927,17 @@ class SmartComposerRAGServer {
       // If metadata is unavailable, continue with a warning
     }
 
-    // Properly encode file_uri (fix URIs in variables passed by Claude Code)
+    // Determine output directory
+    const resolvedOutputDir = outputDir || process.env.RAG_REPORT_OUTPUT_DIR || './rag-reports'
+
+    // Convert file:// URIs to relative paths
     let processedVariables: Record<string, any>
     try {
-      processedVariables = this.processFileUris(variables)
+      processedVariables = this.convertFileUrisToRelativePaths(variables, resolvedOutputDir)
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error)
-      console.error('[handleGenerateAnswerV2] Error processing file URIs:', errorMessage)
-      throw new Error(`Failed to process file URIs: ${errorMessage}`)
+      console.error('[handleGenerateAnswerV2] Error converting file URIs to relative paths:', errorMessage)
+      throw new Error(`Failed to convert file URIs to relative paths: ${errorMessage}`)
     }
 
     // Generate report using new V2 method
@@ -985,6 +988,46 @@ class SmartComposerRAGServer {
     }
   }
 
+  private convertFileUrisToRelativePaths(variables: Record<string, any>, outputDir: string, visited = new WeakSet()): Record<string, any> {
+    // Recursively find and convert file_uri fields from file:// URLs to relative paths
+    const processed: Record<string, any> = {}
+
+    for (const [key, value] of Object.entries(variables)) {
+      if (key === 'file_uri' && typeof value === 'string') {
+        // Convert file:// URI to relative path
+        processed[key] = this.convertFileUriToRelativePath(value, outputDir)
+      } else if (Array.isArray(value)) {
+        // Process each element if array
+        processed[key] = value.map(item => {
+          if (typeof item === 'object' && item !== null) {
+            // Check for circular references
+            if (visited.has(item)) {
+              // Skip circular reference silently
+              return item
+            }
+            visited.add(item)
+            return this.convertFileUrisToRelativePaths(item, outputDir, visited)
+          }
+          return item
+        })
+      } else if (typeof value === 'object' && value !== null) {
+        // Check for circular references
+        if (visited.has(value)) {
+          // Skip circular reference silently
+          processed[key] = value
+        } else {
+          // Process recursively if object
+          visited.add(value)
+          processed[key] = this.convertFileUrisToRelativePaths(value, outputDir, visited)
+        }
+      } else {
+        processed[key] = value
+      }
+    }
+
+    return processed
+  }
+
   private processFileUris(variables: Record<string, any>, visited = new WeakSet()): Record<string, any> {
     // Recursively find and properly encode file_uri fields
     const processed: Record<string, any> = {}
@@ -1024,6 +1067,35 @@ class SmartComposerRAGServer {
     }
 
     return processed
+  }
+
+  private convertFileUriToRelativePath(uri: string, outputDir: string): string {
+    // Convert file:// URI to relative path from outputDir
+    if (!uri.startsWith('file://')) {
+      // Already a relative path or not a file URI
+      return uri
+    }
+
+    // Separate file:// and anchor (#)
+    const hashIndex = uri.indexOf('#')
+    const baseUri = hashIndex !== -1 ? uri.substring(0, hashIndex) : uri
+    const anchor = hashIndex !== -1 ? uri.substring(hashIndex) : ''
+
+    // Remove file:// and get absolute path
+    const absolutePath = baseUri.substring(7) // 'file://'.length === 7
+
+    // Decode URI components (handle %20, etc.)
+    const decodedPath = decodeURIComponent(absolutePath)
+
+    // Calculate relative path from output directory
+    const resolvedOutputDir = resolve(outputDir)
+    const relativePath = relative(resolvedOutputDir, decodedPath)
+
+    // Ensure forward slashes for consistency (even on Windows)
+    const normalizedPath = relativePath.replace(/\\/g, '/')
+
+    // Return relative path with anchor
+    return normalizedPath + anchor
   }
 
   private encodeFileUri(uri: string): string {
