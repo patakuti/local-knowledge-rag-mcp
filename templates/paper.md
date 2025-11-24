@@ -13,7 +13,7 @@
 ## References
 
 {{#references}}
-<a id="ref-{{id}}"></a>[{{id}}] [{{file_path}}:{{line_range}}]({{file_uri}})
+<a id="ref-{{id}}"></a>[{{id}}] <a href="{{file_uri}}">{{file_path}}:{{line_range}}</a>
 
 {{/references}}
 
