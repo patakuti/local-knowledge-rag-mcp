@@ -66,12 +66,17 @@ export class TemplateEngine {
     const templateName = params.template || 'basic'
     const template = await this.loadTemplate(templateName)
 
+    // Determine output directory for relative path calculation
+    const outputDir = params.outputDir || process.env.RAG_REPORT_OUTPUT_DIR || './rag-reports'
+    const resolvedOutputDir = resolve(outputDir)
+
     // Prepare data (using summaries)
     const templateData = this.prepareTemplateDataWithSummaries(
       query,
       searchResults,
       overallSummary,
-      sectionSummaries
+      sectionSummaries,
+      resolvedOutputDir
     )
 
     // Process template
@@ -434,7 +439,8 @@ export class TemplateEngine {
     query: string,
     searchResults: SearchResult[],
     overallSummary: string,
-    sectionSummaries: Array<{ file_path: string; summary: string; relevant_quote?: string; start_line?: number }>
+    sectionSummaries: Array<{ file_path: string; summary: string; relevant_quote?: string; start_line?: number }>,
+    reportOutputDir: string
   ): TemplateData {
     // Group by file
     const fileGroups = new Map<string, SearchResult[]>()
@@ -469,9 +475,9 @@ export class TemplateEngine {
 
       if (sectionSummary.relevant_quote) {
         // Use Claude-provided relevant part (preserve empty lines)
-        const quoteLines = sectionSummary.relevant_quote.split('\n')
+        const quoteLines = sectionSummary.relevant_quote.split('\\n')
         const limitedLines = quoteLines.slice(0, 10) // Max 10 lines (including empty lines)
-        quote = limitedLines.join('\n')
+        quote = limitedLines.join('\\n')
 
         // Use Claude Code provided start_line (it should be the actual quote start line, not chunk start)
         if (sectionSummary.start_line !== undefined) {
@@ -485,9 +491,9 @@ export class TemplateEngine {
         }
       } else {
         // Default: quote from chunk start (preserve empty lines)
-        const lines = firstResult.content.split('\n')
+        const lines = firstResult.content.split('\\n')
         const limitedLines = lines.slice(0, 10) // Max 10 lines (including empty lines)
-        quote = limitedLines.join('\n')
+        quote = limitedLines.join('\\n')
         quoteStartLine = chunkStartLine
         quoteEndLine = quoteStartLine !== undefined ? quoteStartLine + limitedLines.length - 1 : undefined
       }
@@ -495,20 +501,13 @@ export class TemplateEngine {
       const fileName = this.extractFileName(path)
       const absolutePath = resolve(path)
 
-      // Generate file:// format URI (encode path with encodeURI)
-      const encodedPath = encodeURI(absolutePath.replace(/\\/g, '/'))
-      let fileUri: string
-      
-      if (quoteStartLine !== undefined && quoteEndLine !== undefined && quoteStartLine !== quoteEndLine) {
-        // Line range for multi-line quotes
-        fileUri = `file://${encodedPath}#L${quoteStartLine}-L${quoteEndLine}`
-      } else if (quoteStartLine !== undefined) {
-        // Single line
-        fileUri = `file://${encodedPath}#L${quoteStartLine}`
-      } else {
-        // No line number
-        fileUri = `file://${encodedPath}`
-      }
+      // Generate relative path from report directory to target file
+      const fileUri = this.generateRelativeFileUri(
+        absolutePath,
+        reportOutputDir,
+        quoteStartLine,
+        quoteEndLine
+      )
 
       // Generate filename with line number
       const fileNameWithLine = quoteStartLine !== undefined
