@@ -201,7 +201,7 @@ class SmartComposerRAGServer {
                 },
                 template: {
                   type: 'string',
-                  description: 'Optional template name. RECOMMENDED: Omit this parameter to use the workspace default template. Only specify if you need a different format (available: basic, paper, bullet_points). Check MCP Resources (template://{name}/schema) or call get_template_schema to see details.',
+                  description: 'Optional template name. RECOMMENDED: Omit this parameter to use the workspace default template. Only specify if you need a different format (available: basic, paper, bullet_points, manual). Check MCP Resources (template://{name}/schema) or call get_template_schema to see details.',
                   default: 'basic',
                 },
                 output_dir: {
@@ -304,7 +304,7 @@ class SmartComposerRAGServer {
               properties: {
                 template: {
                   type: 'string',
-                  description: 'Template name (optional). If omitted, uses workspace default template from settings. Available templates: basic, paper, bullet_points',
+                  description: 'Template name (optional). If omitted, uses workspace default template from settings. Available templates: basic, paper, bullet_points, manual',
                 },
               },
             },
@@ -852,7 +852,8 @@ class SmartComposerRAGServer {
             '### Available Templates:',
             '- `basic`: Standard report format',
             '- `paper`: Academic paper format',
-            '- `bullet_points`: Concise bullet point format'
+            '- `bullet_points`: Concise bullet point format',
+            '- `manual`: General manual/handbook style'
           ].join('\n')
         }],
         isError: true
