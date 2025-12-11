@@ -14,6 +14,7 @@
 
 {{#references}}
 <a id="ref-{{id}}"></a>[{{id}}] <a href="{{file_uri}}">{{file_path}}:{{line_range}}</a>
+> {{quote_preview}}
 
 {{/references}}
 

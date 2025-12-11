@@ -20,7 +20,7 @@
     },
     "body": {
       "type": "string",
-      "description": "Main body text with numbered citations like [1], [2]. Use markdown links for citations: [1](#ref-1), [2](#ref-2), etc. Each citation refers to a reference entry.",
+      "description": "Main body text with numbered citations like [1], [2]. Use markdown links for citations: [1](#ref-1), [2](#ref-2), etc. Each citation refers to a reference entry. IMPORTANT: Do NOT merge references from the same file - each citation should have its own unique reference number even if they are from the same document.",
       "required": true
     },
     "references": {
@@ -50,6 +50,11 @@
             "type": "string",
             "description": "Full file URI with line anchor (will be automatically encoded by MCP)",
             "required": true
+          },
+          "quote_preview": {
+            "type": "string",
+            "description": "A short preview of the quoted content (1-2 lines, ~50-100 chars). Use the first meaningful line from the referenced section, truncate with '...' if too long.",
+            "required": true
           }
         }
       }
@@ -65,13 +70,22 @@
         "id": "1",
         "file_path": "src/hooks/index.ts",
         "line_range": "1-10",
-        "file_uri": "file:///workspace/src/hooks/index.ts#L1"
+        "file_uri": "file:///workspace/src/hooks/index.ts#L1",
+        "quote_preview": "export { useState } from './useState' ..."
       },
       {
         "id": "2",
         "file_path": "src/hooks/useState.ts",
         "line_range": "15-25",
-        "file_uri": "file:///workspace/src/hooks/useState.ts#L15"
+        "file_uri": "file:///workspace/src/hooks/useState.ts#L15",
+        "quote_preview": "export function useState<T>(initial: T): [T, SetState<T>] { ..."
+      },
+      {
+        "id": "3",
+        "file_path": "src/hooks/useState.ts",
+        "line_range": "42-50",
+        "file_uri": "file:///workspace/src/hooks/useState.ts#L42",
+        "quote_preview": "const dispatch = useCallback((action: Action) => { ..."
       }
     ]
   }
