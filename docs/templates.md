@@ -32,14 +32,21 @@ Simple report format with file-based sections.
 
 Academic paper style with numbered citations.
 
-**Additional variables:**
+**Variables:**
 - `title` (string): Report title
+- `generated_at` (string): Generation timestamp
+- `abstract` (string): Abstract summarizing the findings
+- `body` (string): Main body text with numbered citations like `[[1]](#ref-1)`
 - `references` (array): Array of reference objects
 
 **Reference object:**
-- `id` (number): Citation number
-- `file` (string): File path
-- `content` (string): Referenced content
+- `id` (string): Citation number (e.g., "1", "2")
+- `file_path` (string): Relative file path
+- `line_range` (string): Line range (e.g., "42-50")
+- `file_uri` (string): Full file URI with line anchor
+- `quote_preview` (string): Short preview of the quoted content (1-2 lines)
+
+**Important:** Do NOT merge references from the same file - each citation should have its own unique reference number even if they are from the same document.
 
 ### bullet_points
 
@@ -63,13 +70,16 @@ General manual/handbook style with numbered chapters and sources.
 **Chapter object:**
 - `number` (string): Chapter number
 - `chapter_title` (string): Chapter title
-- `content` (string): Chapter content with citations
+- `content` (string): Chapter content with citations like `[[1]](#ref-1)`
 
 **Source object:**
 - `id` (string): Source number
 - `file_path` (string): File path
 - `line_range` (string): Line range
 - `file_uri` (string): Clickable file URI
+- `quote_preview` (string): Short preview of the quoted content (1-2 lines)
+
+**Important:** Do NOT merge sources from the same file - each citation should have its own unique source number even if they are from the same document.
 
 ---
 

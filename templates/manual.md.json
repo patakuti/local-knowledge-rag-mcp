@@ -38,7 +38,7 @@
           },
           "content": {
             "type": "string",
-            "description": "Chapter content with numbered citations like [1], [2]. Use markdown links for citations: [1](#ref-1), [2](#ref-2), etc. Each citation refers to a source entry.",
+            "description": "Chapter content with numbered citations like [1], [2]. Use markdown links for citations: [1](#ref-1), [2](#ref-2), etc. Each citation refers to a source entry. IMPORTANT: Do NOT merge sources from the same file - each citation should have its own unique source number even if they are from the same document.",
             "required": true
           }
         }
@@ -71,6 +71,11 @@
             "type": "string",
             "description": "Full file URI with line anchor (will be automatically encoded by MCP)",
             "required": true
+          },
+          "quote_preview": {
+            "type": "string",
+            "description": "A short preview of the quoted content (1-2 lines, ~50-100 chars). Use the first meaningful line from the referenced section, truncate with '...' if too long.",
+            "required": true
           }
         }
       }
@@ -97,25 +102,29 @@
         "id": "1",
         "file_path": "docs/git-basics.md",
         "line_range": "10-20",
-        "file_uri": "file:///workspace/docs/git-basics.md#L10"
+        "file_uri": "file:///workspace/docs/git-basics.md#L10",
+        "quote_preview": "## Initializing a Repository ..."
       },
       {
         "id": "2",
         "file_path": "docs/git-basics.md",
         "line_range": "25-35",
-        "file_uri": "file:///workspace/docs/git-basics.md#L25"
+        "file_uri": "file:///workspace/docs/git-basics.md#L25",
+        "quote_preview": "git clone <repository-url> creates a local copy ..."
       },
       {
         "id": "3",
         "file_path": "docs/branching.md",
         "line_range": "5-15",
-        "file_uri": "file:///workspace/docs/branching.md#L5"
+        "file_uri": "file:///workspace/docs/branching.md#L5",
+        "quote_preview": "git branch <name> creates a new branch ..."
       },
       {
         "id": "4",
         "file_path": "docs/branching.md",
         "line_range": "20-30",
-        "file_uri": "file:///workspace/docs/branching.md#L20"
+        "file_uri": "file:///workspace/docs/branching.md#L20",
+        "quote_preview": "git checkout <branch> switches to the specified branch ..."
       }
     ]
   }
