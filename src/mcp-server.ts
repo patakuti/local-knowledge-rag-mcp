@@ -201,7 +201,7 @@ class SmartComposerRAGServer {
                 },
                 template: {
                   type: 'string',
-                  description: 'Optional template name. RECOMMENDED: Omit this parameter to use the workspace default template. Only specify if you need a different format (available: basic, paper, bullet_points, manual). Check MCP Resources (template://{name}/schema) or call get_template_schema to see details.',
+                  description: 'Optional template name. RECOMMENDED: Omit this parameter to use the workspace default template. Only specify if you need a different format. Call get_template_schema (without parameters) to list all available templates, or check MCP Resources (template://{name}/schema).',
                   default: 'basic',
                 },
                 output_dir: {
@@ -298,13 +298,13 @@ class SmartComposerRAGServer {
           },
           {
             name: 'get_template_schema',
-            description: 'Get the schema (variable definitions) for a report template. Call this BEFORE create_rag_report to understand what variables the template requires. If template parameter is omitted, returns the workspace default template schema (configured via Console). This enables Claude Code to structure the report data according to the template format.',
+            description: 'Get the schema (variable definitions) for a report template. Call this BEFORE create_rag_report to understand what variables the template requires. If template parameter is omitted, returns a list of all available templates. This enables Claude Code to discover templates dynamically and structure report data according to the template format.',
             inputSchema: {
               type: 'object',
               properties: {
                 template: {
                   type: 'string',
-                  description: 'Template name (optional). If omitted, uses workspace default template from settings. Available templates: basic, paper, bullet_points, manual',
+                  description: 'Template name (optional). If omitted, returns a list of all available templates with their descriptions. If specified, returns the schema for that template.',
                 },
               },
             },
@@ -1469,8 +1469,40 @@ class SmartComposerRAGServer {
   }
 
   private async handleGetTemplateSchema(args: any) {
-    // If template is not specified, use environment variable defaultTemplate
-    const templateName = args.template || process.env.RAG_DEFAULT_TEMPLATE || 'basic'
+    // If template is not specified, return list of available templates
+    if (!args.template) {
+      try {
+        const templates = await this.templateEngine.listTemplates()
+        const defaultTemplate = process.env.RAG_DEFAULT_TEMPLATE || 'basic'
+
+        return {
+          content: [
+            {
+              type: 'text',
+              text: JSON.stringify({
+                default_template: defaultTemplate,
+                available_templates: templates,
+                usage: 'Call get_template_schema with a specific template name to get its schema. Example: {"template": "basic"}'
+              }, null, 2)
+            }
+          ]
+        }
+      } catch (error) {
+        const errorMessage = error instanceof Error ? error.message : String(error)
+        return {
+          content: [
+            {
+              type: 'text',
+              text: `Error listing templates: ${errorMessage}`
+            }
+          ],
+          isError: true
+        }
+      }
+    }
+
+    // If template is specified, return its schema
+    const templateName = args.template
 
     try {
       const metadata = await this.templateEngine.getTemplateMetadata(templateName)
@@ -1486,7 +1518,7 @@ class SmartComposerRAGServer {
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error)
 
-      // Get template list
+      // Get template list for error message
       let availableTemplates: string[] = []
       try {
         const templates = await this.templateEngine.listTemplates()
