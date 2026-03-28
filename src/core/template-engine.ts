@@ -123,8 +123,13 @@ export class TemplateEngine {
             : `file://${absolutePath}#L${section.startLine}`)
         : `file://${absolutePath}`
 
+      const fileNameWithLine = section.startLine
+        ? `${fileName}:${section.startLine}${section.endLine && section.endLine !== section.startLine ? `-${section.endLine}` : ''}`
+        : fileName
+
       return {
         file_name: fileName,
+        file_name_with_line: fileNameWithLine,
         section_summary: section.summary,
         section_quote: quote,
         file_uri: fileUri,
@@ -169,6 +174,7 @@ export class TemplateEngine {
       return data.sections.map((section: any) => {
         let sectionContent = sectionTemplate
         sectionContent = sectionContent.replace(/\{\{file_name\}\}/g, section.file_name)
+        sectionContent = sectionContent.replace(/\{\{file_name_with_line\}\}/g, section.file_name_with_line || section.file_name)
         sectionContent = sectionContent.replace(/\{\{section_summary\}\}/g, section.section_summary)
         sectionContent = sectionContent.replace(/\{\{section_quote\}\}/g, section.section_quote)
         sectionContent = sectionContent.replace(/\{\{file_uri\}\}/g, section.file_uri)
