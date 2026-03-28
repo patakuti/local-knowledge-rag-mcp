@@ -42,9 +42,12 @@ Academic paper style with numbered citations.
 **Reference object:**
 - `id` (string): Citation number (e.g., "1", "2")
 - `file_path` (string): Relative file path
-- `line_range` (string): Line range (e.g., "42-50")
+- `line_range` (string, optional): Line range (e.g., "42-50"). Auto-calculated when `quote_start`/`quote_end` are provided.
 - `file_uri` (string): Full file URI with line anchor
 - `quote_preview` (string): Short preview of the quoted content (1-2 lines)
+- `quote_start` (string, optional): First ~30 characters copied verbatim from the chunk content. Used with `quote_end` for automatic line number resolution.
+- `quote_end` (string, optional): Last ~30 characters copied verbatim from the chunk content. Used with `quote_start` for automatic line number resolution.
+- `result_id` (string, optional): The chunk result ID from `get_search_results`. Narrows the search range for more accurate resolution.
 
 **Important:** Do NOT merge references from the same file - each citation should have its own unique reference number even if they are from the same document.
 
@@ -75,9 +78,12 @@ General manual/handbook style with numbered chapters and sources.
 **Source object:**
 - `id` (string): Source number
 - `file_path` (string): File path
-- `line_range` (string): Line range
+- `line_range` (string, optional): Line range. Auto-calculated when `quote_start`/`quote_end` are provided.
 - `file_uri` (string): Clickable file URI
 - `quote_preview` (string): Short preview of the quoted content (1-2 lines)
+- `quote_start` (string, optional): First ~30 characters copied verbatim from the chunk content. Used with `quote_end` for automatic line number resolution.
+- `quote_end` (string, optional): Last ~30 characters copied verbatim from the chunk content. Used with `quote_start` for automatic line number resolution.
+- `result_id` (string, optional): The chunk result ID from `get_search_results`. Narrows the search range for more accurate resolution.
 
 **Important:** Do NOT merge sources from the same file - each citation should have its own unique source number even if they are from the same document.
 

@@ -45,7 +45,8 @@ import { ProgressServer } from './utils/progress-server.js'
 import { BrowserFlag } from './utils/browser-flag.js'
 import { ProgressServerFlag } from './utils/progress-server-flag.js'
 import { IndexManagerRegistry } from './utils/index-manager-registry.js'
-import { sanitizeQuery } from './utils/log-sanitizer.js'
+import { sanitizeQuery, sanitizePathGeneric } from './utils/log-sanitizer.js'
+import { resolveLineNumbers, readFileWithCache } from './utils/line-resolver.js'
 import type {
   VaultSearchParams,
   RebuildIndexParams,
@@ -223,7 +224,7 @@ class SmartComposerRAGServer {
           },
           {
             name: 'get_search_results',
-            description: 'Get detailed search results from one or multiple session IDs. Returns chunks with their content and metadata. Each result includes: (1) content: the chunk text, (2) start_line/end_line: the line range of this CHUNK in the original file. IMPORTANT: When you quote a portion of the chunk in create_rag_report, calculate the actual line number where YOUR QUOTE starts (not the chunk start). For example, if chunk is L10-L50 and your quote starts at the 5th line of the chunk, use start_line=14 (10+4). WORKFLOW: Use this after search_knowledge to retrieve content, then MUST call create_rag_report to create the final report. ⚠️ DO NOT specify the "limit" parameter unless the user explicitly requests a different number of results.',
+            description: 'Get detailed search results from one or multiple session IDs. Returns chunks with their content and metadata. Each result includes: (1) id: result identifier for line resolution, (2) content: the chunk text, (3) start_line/end_line: the line range of this CHUNK in the original file. LINE NUMBER AUTO-RESOLUTION: For templates with sources/references (manual, paper), provide quote_start (first ~30 chars of your quote, copied verbatim from content), quote_end (last ~30 chars), and result_id (the chunk id) in each source/reference. The system will automatically calculate accurate line_range. WORKFLOW: Use this after search_knowledge to retrieve content, then MUST call create_rag_report to create the final report. ⚠️ DO NOT specify the "limit" parameter unless the user explicitly requests a different number of results.',
             inputSchema: {
               type: 'object',
               properties: {
@@ -928,6 +929,13 @@ class SmartComposerRAGServer {
       // If metadata is unavailable, continue with a warning
     }
 
+    // Resolve quote-based line numbers (before URI conversion, while URIs are still absolute)
+    try {
+      await this.resolveQuoteLineNumbers(variables)
+    } catch (error) {
+      console.warn('[handleGenerateAnswerV2] Quote line resolution failed, continuing with original values:', error)
+    }
+
     // Determine output directory
     const resolvedOutputDir = outputDir || process.env.RAG_REPORT_OUTPUT_DIR || './rag-reports'
 
@@ -986,6 +994,87 @@ class SmartComposerRAGServer {
           '```'
         ].join('\n')
       }]
+    }
+  }
+
+  /**
+   * Resolve accurate line numbers for sources/references arrays
+   * using quote_start/quote_end anchors matched against original files.
+   * Mutates the variables object in place.
+   */
+  private async resolveQuoteLineNumbers(variables: Record<string, any>): Promise<void> {
+    // Process both sources (manual template) and references (paper template)
+    const arrayKeys = ['sources', 'references']
+    const fileCache = new Map<string, string>()
+
+    for (const key of arrayKeys) {
+      const items = variables[key]
+      if (!Array.isArray(items)) continue
+
+      for (const item of items) {
+        if (!item.quote_start || !item.quote_end) continue
+
+        // Determine absolute file path from file_uri or file_path
+        let absolutePath: string | null = null
+        if (item.file_uri && typeof item.file_uri === 'string' && item.file_uri.startsWith('file://')) {
+          const hashIndex = item.file_uri.indexOf('#')
+          const baseUri = hashIndex !== -1 ? item.file_uri.substring(0, hashIndex) : item.file_uri
+          absolutePath = decodeURIComponent(baseUri.substring(7))
+        } else if (item.file_path) {
+          absolutePath = resolve(item.file_path)
+        }
+
+        if (!absolutePath) continue
+
+        // Read file content (cached)
+        const fileContent = await readFileWithCache(absolutePath, fileCache)
+        if (!fileContent) continue
+
+        // Get chunk hint from result_id
+        let hintStartLine: number | undefined
+        let hintEndLine: number | undefined
+        if (item.result_id && typeof item.result_id === 'string' && !item.result_id.startsWith('multi_')) {
+          const lastUnderscoreIdx = item.result_id.lastIndexOf('_')
+          if (lastUnderscoreIdx > 0) {
+            const sessionId = item.result_id.substring(0, lastUnderscoreIdx)
+            const idx = parseInt(item.result_id.substring(lastUnderscoreIdx + 1), 10)
+            if (!isNaN(idx)) {
+              const sessionResult = this.sessionManager.getSearchResult(sessionId)
+              if (sessionResult && idx < sessionResult.results.length) {
+                hintStartLine = sessionResult.results[idx].metadata.startLine
+                hintEndLine = sessionResult.results[idx].metadata.endLine
+              }
+            }
+          }
+        }
+
+        // Resolve line numbers
+        const result = resolveLineNumbers({
+          quote_start: item.quote_start,
+          quote_end: item.quote_end,
+          fileContent,
+          hintStartLine,
+          hintEndLine,
+        })
+
+        if (result.resolved) {
+          item.line_range = `${result.startLine}-${result.endLine}`
+          // Update file_uri anchor
+          if (item.file_uri && typeof item.file_uri === 'string') {
+            const hashIndex = item.file_uri.indexOf('#')
+            const baseUri = hashIndex !== -1 ? item.file_uri.substring(0, hashIndex) : item.file_uri
+            item.file_uri = `${baseUri}#L${result.startLine}`
+          }
+          console.error(`[resolveQuoteLineNumbers] Resolved line range: ${item.line_range} for ${sanitizePathGeneric(absolutePath)}`)
+        } else {
+          console.warn(`[resolveQuoteLineNumbers] Could not resolve quote in ${sanitizePathGeneric(absolutePath)}, keeping original line_range`)
+        }
+
+        // Clean up: remove quote_start/quote_end/result_id from output
+        delete item.quote_start
+        delete item.quote_end
+        delete item.result_id
+      }
     }
   }
 
