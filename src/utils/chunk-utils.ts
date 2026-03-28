@@ -27,10 +27,15 @@ export class TextChunker {
     try {
       const documents = await this.splitter.createDocuments([content])
 
+      // Track search position to handle duplicate chunk text correctly
+      // (chunks are returned in document order)
+      let searchFrom = 0
+
       return documents.map((doc): ContentChunk => {
-        // Calculate line numbers by finding chunk content in original content
         const chunkContent = doc.pageContent
-        const { startLine, endLine } = this.calculateLineNumbers(content, chunkContent)
+        const { startLine, endLine, nextSearchFrom } =
+          this.calculateLineNumbers(content, chunkContent, searchFrom)
+        searchFrom = nextSearchFrom
 
         const metadata: VectorMetaData = {
           startLine,
@@ -60,30 +65,47 @@ export class TextChunker {
     }
   }
 
-  private calculateLineNumbers(originalContent: string, chunkContent: string): { startLine: number; endLine: number } {
-    const lines = originalContent.split('\n')
-    const chunkLines = chunkContent.split('\n')
+  /**
+   * Calculate line numbers using character offset matching.
+   * Finds the chunk in the original content by character position,
+   * then counts newlines to derive line numbers.
+   */
+  private calculateLineNumbers(
+    originalContent: string,
+    chunkContent: string,
+    searchFrom: number
+  ): { startLine: number; endLine: number; nextSearchFrom: number } {
+    // Trim leading/trailing whitespace from chunk for matching,
+    // since keepSeparator can prepend separators to chunks
+    const trimmed = chunkContent.trim()
+    const offset = originalContent.indexOf(trimmed, searchFrom)
 
-    // Find the first occurrence of the chunk content
-    let startLine = 1
-    let endLine = 1
-
-    for (let i = 0; i <= lines.length - chunkLines.length; i++) {
-      let matches = true
-      for (let j = 0; j < chunkLines.length; j++) {
-        if (lines[i + j] !== chunkLines[j]) {
-          matches = false
-          break
-        }
+    if (offset === -1) {
+      // Fallback: search from the beginning
+      const fallbackOffset = originalContent.indexOf(trimmed)
+      if (fallbackOffset === -1) {
+        const totalLines = originalContent.split('\n').length
+        return { startLine: 1, endLine: totalLines, nextSearchFrom: searchFrom }
       }
-      if (matches) {
-        startLine = i + 1 // 1-based line numbers
-        endLine = i + chunkLines.length
-        break
-      }
+      const startLine = this.countNewlines(originalContent, 0, fallbackOffset) + 1
+      const endLine = startLine + this.countNewlines(trimmed, 0, trimmed.length)
+      return { startLine, endLine, nextSearchFrom: fallbackOffset + trimmed.length }
     }
 
-    return { startLine, endLine }
+    const startLine = this.countNewlines(originalContent, 0, offset) + 1
+    const endLine = startLine + this.countNewlines(trimmed, 0, trimmed.length)
+    return { startLine, endLine, nextSearchFrom: offset + trimmed.length }
+  }
+
+  /**
+   * Count newline characters in a string between two positions.
+   */
+  private countNewlines(text: string, from: number, to: number): number {
+    let count = 0
+    for (let i = from; i < to; i++) {
+      if (text[i] === '\n') count++
+    }
+    return count
   }
 
   /**
