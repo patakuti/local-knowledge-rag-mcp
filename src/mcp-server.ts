@@ -1012,25 +1012,7 @@ class SmartComposerRAGServer {
       if (!Array.isArray(items)) continue
 
       for (const item of items) {
-        if (!item.quote_start || !item.quote_end) continue
-
-        // Determine absolute file path from file_uri or file_path
-        let absolutePath: string | null = null
-        if (item.file_uri && typeof item.file_uri === 'string' && item.file_uri.startsWith('file://')) {
-          const hashIndex = item.file_uri.indexOf('#')
-          const baseUri = hashIndex !== -1 ? item.file_uri.substring(0, hashIndex) : item.file_uri
-          absolutePath = decodeURIComponent(baseUri.substring(7))
-        } else if (item.file_path) {
-          absolutePath = resolve(item.file_path)
-        }
-
-        if (!absolutePath) continue
-
-        // Read file content (cached)
-        const fileContent = await readFileWithCache(absolutePath, fileCache)
-        if (!fileContent) continue
-
-        // Get chunk hint from result_id
+        // Look up chunk hint from result_id
         let hintStartLine: number | undefined
         let hintEndLine: number | undefined
         if (item.result_id && typeof item.result_id === 'string' && !item.result_id.startsWith('multi_')) {
@@ -1048,28 +1030,52 @@ class SmartComposerRAGServer {
           }
         }
 
-        // Resolve line numbers
-        const result = resolveLineNumbers({
-          quote_start: item.quote_start,
-          quote_end: item.quote_end,
-          fileContent,
-          hintStartLine,
-          hintEndLine,
-        })
-
-        if (result.resolved) {
-          item.line_range = `${result.startLine}-${result.endLine}`
-          // Update file_uri anchor
-          if (item.file_uri && typeof item.file_uri === 'string') {
+        // Try quote-based resolution if quote_start/quote_end are provided
+        if (item.quote_start && item.quote_end) {
+          // Determine absolute file path from file_uri or file_path
+          let absolutePath: string | null = null
+          if (item.file_uri && typeof item.file_uri === 'string' && item.file_uri.startsWith('file://')) {
             const hashIndex = item.file_uri.indexOf('#')
             const baseUri = hashIndex !== -1 ? item.file_uri.substring(0, hashIndex) : item.file_uri
-            item.file_uri = result.startLine !== result.endLine
-              ? `${baseUri}#L${result.startLine}-L${result.endLine}`
-              : `${baseUri}#L${result.startLine}`
+            absolutePath = decodeURIComponent(baseUri.substring(7))
+          } else if (item.file_path) {
+            absolutePath = resolve(item.file_path)
           }
-          console.error(`[resolveQuoteLineNumbers] Resolved line range: ${item.line_range} for ${sanitizePathGeneric(absolutePath)}`)
-        } else {
-          console.warn(`[resolveQuoteLineNumbers] Could not resolve quote in ${sanitizePathGeneric(absolutePath)}, keeping original line_range`)
+
+          if (absolutePath) {
+            // Read file content (cached)
+            const fileContent = await readFileWithCache(absolutePath, fileCache)
+            if (fileContent) {
+              const result = resolveLineNumbers({
+                quote_start: item.quote_start,
+                quote_end: item.quote_end,
+                fileContent,
+                hintStartLine,
+                hintEndLine,
+              })
+
+              if (result.resolved) {
+                item.line_range = `${result.startLine}-${result.endLine}`
+                // Update file_uri anchor
+                if (item.file_uri && typeof item.file_uri === 'string') {
+                  const hashIndex = item.file_uri.indexOf('#')
+                  const baseUri = hashIndex !== -1 ? item.file_uri.substring(0, hashIndex) : item.file_uri
+                  item.file_uri = result.startLine !== result.endLine
+                    ? `${baseUri}#L${result.startLine}-L${result.endLine}`
+                    : `${baseUri}#L${result.startLine}`
+                }
+                console.error(`[resolveQuoteLineNumbers] Resolved line range: ${item.line_range} for ${sanitizePathGeneric(absolutePath)}`)
+              } else {
+                console.warn(`[resolveQuoteLineNumbers] Could not resolve quote in ${sanitizePathGeneric(absolutePath)}`)
+              }
+            }
+          }
+        }
+
+        // Fallback: if line_range is still missing, use chunk's line range from result_id
+        if (!item.line_range && hintStartLine !== undefined && hintEndLine !== undefined) {
+          item.line_range = `${hintStartLine}-${hintEndLine}`
+          console.error(`[resolveQuoteLineNumbers] Fallback to chunk line range: ${item.line_range}`)
         }
 
         // Clean up: remove quote_start/quote_end/result_id from output
