@@ -1078,6 +1078,11 @@ class SmartComposerRAGServer {
           console.error(`[resolveQuoteLineNumbers] Fallback to chunk line range: ${item.line_range}`)
         }
 
+        // Ensure line_range is never undefined (prevents {{line_range}} in output)
+        if (!item.line_range) {
+          item.line_range = ''
+        }
+
         // Clean up: remove quote_start/quote_end/result_id from output
         delete item.quote_start
         delete item.quote_end
