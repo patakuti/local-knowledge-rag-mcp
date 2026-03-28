@@ -1063,7 +1063,9 @@ class SmartComposerRAGServer {
           if (item.file_uri && typeof item.file_uri === 'string') {
             const hashIndex = item.file_uri.indexOf('#')
             const baseUri = hashIndex !== -1 ? item.file_uri.substring(0, hashIndex) : item.file_uri
-            item.file_uri = `${baseUri}#L${result.startLine}`
+            item.file_uri = result.startLine !== result.endLine
+              ? `${baseUri}#L${result.startLine}-L${result.endLine}`
+              : `${baseUri}#L${result.startLine}`
           }
           console.error(`[resolveQuoteLineNumbers] Resolved line range: ${item.line_range} for ${sanitizePathGeneric(absolutePath)}`)
         } else {

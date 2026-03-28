@@ -118,7 +118,9 @@ export class TemplateEngine {
 
       // Generate line number link
       const fileUri = section.startLine
-        ? `file://${absolutePath}#L${section.startLine}`
+        ? (section.endLine && section.startLine !== section.endLine
+            ? `file://${absolutePath}#L${section.startLine}-L${section.endLine}`
+            : `file://${absolutePath}#L${section.startLine}`)
         : `file://${absolutePath}`
 
       return {
