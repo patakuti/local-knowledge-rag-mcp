@@ -26,7 +26,7 @@ import { ProgressServer } from './utils/progress-server.js'
 import { IndexManagerRegistry } from './utils/index-manager-registry.js'
 import { createRAGEngineFromConfig } from './core/rag-engine.js'
 import { generateWorkspaceId, getWorkspaceTempDir } from './utils/workspace-utils.js'
-import { Mutex } from 'async-mutex'
+import { Mutex, MutexInterface, tryAcquire } from 'async-mutex'
 import { CancellationController } from './types/rag.types.js'
 import { TemplateEngine } from './core/template-engine.js'
 import type { RebuildIndexParams } from './types/rag.types.js'
@@ -123,7 +123,7 @@ async function main() {
   const progressServer = new ProgressServer(logFilePath, port)
 
   // Mutex and cancellation control
-  const indexMutex = new Mutex()
+  const indexMutex = tryAcquire(new Mutex())
   const indexCancellationController: CancellationController = {
     isCancelled: false,
     cancel: function() {
@@ -205,7 +205,7 @@ function setupIdleTimeout(
 function setupHandlers(
   progressServer: ProgressServer,
   ragEngine: any,
-  indexMutex: Mutex,
+  indexMutex: MutexInterface,
   indexCancellationController: CancellationController,
   workspacePath: string
 ) {
