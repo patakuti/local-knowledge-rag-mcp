@@ -103,6 +103,7 @@
   - Generates Markdown reports
   - Loads and processes templates
   - Generates file URIs and line numbers
+  - Automatic line number resolution via quote anchors (`quote_start`/`quote_end`) for manual/paper templates
 - **Template Variables**
   - `{{query}}`, `{{generated_at}}`, `{{overall_summary}}`
   - `{{#sections}}...{{/sections}}`: Section loop
@@ -125,6 +126,14 @@
 - Text chunking
 - Uses LangChain's RecursiveCharacterTextSplitter
 - Default settings: 1000-character chunks with 200-character overlap
+
+#### line-resolver.ts
+
+- Automatic line number resolution for template references
+- Uses `quote_start`/`quote_end` (verbatim text anchors) to find exact quote position in original files
+- Narrows search range using chunk metadata (`startLine`/`endLine`) as hints (±5 line margin)
+- Falls back to full-file search if not found in hint range
+- File content caching to avoid redundant reads
 
 #### response-formatter.ts
 
