@@ -194,22 +194,34 @@ export class VectorRepository {
     if (filePaths.length === 0) {
       return
     }
-    await this.db
-      .delete(embeddingTable)
-      .where(
-        and(
-          eq(embeddingTable.workspaceId, workspaceId),
-          inArray(embeddingTable.path, filePaths),
-          eq(embeddingTable.model, embeddingModel.id),
-        ),
-      )
+    // Each filePath is 1 parameter, plus 2 fixed parameters (workspaceId, model).
+    // Batch to stay well under PostgreSQL's 65,535 parameter limit.
+    const BATCH_SIZE = 20000
+    for (let i = 0; i < filePaths.length; i += BATCH_SIZE) {
+      const batch = filePaths.slice(i, i + BATCH_SIZE)
+      await this.db
+        .delete(embeddingTable)
+        .where(
+          and(
+            eq(embeddingTable.workspaceId, workspaceId),
+            inArray(embeddingTable.path, batch),
+            eq(embeddingTable.model, embeddingModel.id),
+          ),
+        )
+    }
   }
 
   async insertVectors(vectors: InsertEmbedding[]): Promise<void> {
     if (vectors.length === 0) {
       return
     }
-    await this.db.insert(embeddingTable).values(vectors)
+    // The embeddings table has 8 columns, so each row uses 8 parameters.
+    // Batch to stay well under PostgreSQL's 65,535 parameter limit (5000 * 8 = 40,000).
+    const BATCH_SIZE = 5000
+    for (let i = 0; i < vectors.length; i += BATCH_SIZE) {
+      const batch = vectors.slice(i, i + BATCH_SIZE)
+      await this.db.insert(embeddingTable).values(batch)
+    }
   }
 
   async clearAllVectors(
