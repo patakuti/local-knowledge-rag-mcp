@@ -124,13 +124,17 @@ async function main() {
 
   // Mutex and cancellation control
   const indexMutex = tryAcquire(new Mutex())
+  let abortController = new AbortController()
   const indexCancellationController: CancellationController = {
     isCancelled: false,
+    get signal() { return abortController.signal },
     cancel: function() {
       this.isCancelled = true
+      abortController.abort()
     },
     reset: function() {
       this.isCancelled = false
+      abortController = new AbortController()
     }
   }
 
@@ -273,11 +277,22 @@ function setupHandlers(
         }
 
         try {
-          await ragEngine.updateVaultIndex(
-            { reindexAll: shouldReindexAll },
-            onProgress,
-            indexCancellationController
-          )
+          // Race updateVaultIndex against abort signal so the mutex is released
+          // immediately on cancellation, even if a DB/API call is still in-flight
+          const abortPromise = new Promise<never>((_, reject) => {
+            const signal = indexCancellationController.signal
+            if (signal.aborted) { reject(new Error('Cancelled')); return }
+            signal.addEventListener('abort', () => reject(new Error('Cancelled')), { once: true })
+          })
+
+          await Promise.race([
+            ragEngine.updateVaultIndex(
+              { reindexAll: shouldReindexAll },
+              onProgress,
+              indexCancellationController
+            ),
+            abortPromise
+          ])
 
           if (wasCancelled) {
             return {
@@ -297,6 +312,16 @@ function setupHandlers(
             isError: false
           }
         } catch (error) {
+          if (indexCancellationController.isCancelled) {
+            console.error('[Index Manager] Index operation cancelled')
+            return {
+              content: [{
+                type: 'text',
+                text: '🚫 Index operation cancelled.\n\n' + progressLog.join('\n')
+              }],
+              isError: false
+            }
+          }
           const errorMessage = error instanceof Error ? error.message : String(error)
           console.error('[Index Manager] Error during indexing:', errorMessage)
           return {

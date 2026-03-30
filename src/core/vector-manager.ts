@@ -631,6 +631,8 @@ export class VectorManager {
                 timeMultiple: 2,
                 maxDelay: 30000,
                 retry: async (error: any) => {
+                  // Stop retrying if cancelled
+                  if (cancellationController?.isCancelled) return false
                   // Retry on rate limit errors
                   if (error.status === 429 || error instanceof EmbeddingError) {
                     const progress: IndexProgress = {

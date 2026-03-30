@@ -272,13 +272,20 @@
 ### Index Cancellation
 
 - `cancel_index_generation` tool or Cancel button in Progress Viewer can stop indexing
+- CancellationController uses AbortController internally for immediate interruption:
+  - `signal` (AbortSignal) allows racing against in-flight DB/API operations
+  - `isCancelled` flag for cooperative checkpoint-based cancellation
 - Cancellation is checked at multiple checkpoints for fast response:
   - Before each batch (every 10 chunks)
   - At the start of each chunk processing
   - Before each embedding API call
   - After each batch completes
+  - In backOff retry callback to stop retries immediately
+- Mutex is released immediately on cancellation via Promise.race with abort signal,
+  even if a long-running DB or API call is still in-flight
 - When cancelled:
-  - Processing stops quickly (within current batch of max 10 chunks)
+  - Mutex is released immediately so new index operations can start
+  - Background DB/API operations finish naturally and release advisory lock
   - Partial data remains in the database
   - Status shows "cancelled" with progress completed
   - User can run `rebuild_index` again to resume

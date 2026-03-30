@@ -69,6 +69,7 @@ class SmartComposerRAGServer {
   private progressServerFlag: ProgressServerFlag | null = null
   private indexCancellationController: CancellationController
   private indexMutex = tryAcquire(new Mutex())
+  private _abortController = new AbortController()
   private isShuttingDown: boolean = false
 
   constructor() {
@@ -81,16 +82,21 @@ class SmartComposerRAGServer {
     this.browserFlag = new BrowserFlag() // Temporary, will be replaced
 
     // Initialize cancellation controller for index generation
+    this._abortController = new AbortController()
     this.indexCancellationController = {
       isCancelled: false,
+      signal: this._abortController.signal,
       cancel: () => {
         console.error('[CancellationController.cancel] Setting isCancelled to true')
         this.indexCancellationController.isCancelled = true
+        this._abortController.abort()
         console.error('[CancellationController.cancel] isCancelled is now:', this.indexCancellationController.isCancelled)
       },
       reset: () => {
         console.error('[CancellationController.reset] Resetting isCancelled to false')
         this.indexCancellationController.isCancelled = false
+        this._abortController = new AbortController()
+        this.indexCancellationController.signal = this._abortController.signal
       }
     }
 
@@ -1299,34 +1305,46 @@ class SmartComposerRAGServer {
         let wasCancelled = false
 
         try {
-          await ragEngine.updateVaultIndex(
-            { reindexAll: shouldReindexAll },
-            (progress: QueryProgressState) => {
-              if (progress.type === 'indexing') {
-                const { completedChunks, totalChunks, totalFiles, currentFileName, completedFiles, waitingForRateLimit, isCancelled } = progress.indexProgress
+          // Race updateVaultIndex against abort signal so the mutex is released
+          // immediately on cancellation, even if a DB/API call is still in-flight
+          const abortPromise = new Promise<never>((_, reject) => {
+            const signal = this.indexCancellationController.signal
+            if (signal.aborted) { reject(new Error('Cancelled')); return }
+            signal.addEventListener('abort', () => reject(new Error('Cancelled')), { once: true })
+          })
 
-                if (isCancelled) {
-                  wasCancelled = true
-                  console.error('[handleRebuildIndex] Progress callback detected cancellation at', completedChunks, '/', totalChunks)
-                  const percentage = Math.floor((completedChunks / totalChunks) * 100)
-                  progressLog.push(`🚫 Indexing cancelled at ${completedChunks}/${totalChunks} chunks (${percentage}%)`)
-                } else if (waitingForRateLimit) {
-                  progressLog.push('⏳ API rate limit reached, waiting...')
-                } else if (completedChunks === totalChunks) {
-                  const duration = ((Date.now() - startTime) / 1000).toFixed(1)
-                  progressLog.push(`✅ Indexing complete: ${totalChunks} chunks from ${totalFiles} files (${duration}s)`)
-                } else if (completedChunks > 0 && completedChunks - lastLoggedChunk >= Math.max(1, Math.floor(totalChunks / 20))) {
-                  // Log progress every ~5% or at minimum every chunk if total is small
-                  const percentage = Math.floor((completedChunks / totalChunks) * 100)
-                  const fileProgress = completedFiles !== undefined ? ` [${completedFiles}/${totalFiles} files]` : ''
-                  const currentFile = currentFileName ? ` - ${currentFileName}` : ''
-                  progressLog.push(`📊 Progress: ${completedChunks}/${totalChunks} chunks (${percentage}%)${fileProgress}${currentFile}`)
-                  lastLoggedChunk = completedChunks
-                }
+          const onProgress = (progress: QueryProgressState) => {
+            if (progress.type === 'indexing') {
+              const { completedChunks, totalChunks, totalFiles, currentFileName, completedFiles, waitingForRateLimit, isCancelled } = progress.indexProgress
+
+              if (isCancelled) {
+                wasCancelled = true
+                console.error('[handleRebuildIndex] Progress callback detected cancellation at', completedChunks, '/', totalChunks)
+                const percentage = Math.floor((completedChunks / totalChunks) * 100)
+                progressLog.push(`🚫 Indexing cancelled at ${completedChunks}/${totalChunks} chunks (${percentage}%)`)
+              } else if (waitingForRateLimit) {
+                progressLog.push('⏳ API rate limit reached, waiting...')
+              } else if (completedChunks === totalChunks) {
+                const duration = ((Date.now() - startTime) / 1000).toFixed(1)
+                progressLog.push(`✅ Indexing complete: ${totalChunks} chunks from ${totalFiles} files (${duration}s)`)
+              } else if (completedChunks > 0 && completedChunks - lastLoggedChunk >= Math.max(1, Math.floor(totalChunks / 20))) {
+                const percentage = Math.floor((completedChunks / totalChunks) * 100)
+                const fileProgress = completedFiles !== undefined ? ` [${completedFiles}/${totalFiles} files]` : ''
+                const currentFile = currentFileName ? ` - ${currentFileName}` : ''
+                progressLog.push(`📊 Progress: ${completedChunks}/${totalChunks} chunks (${percentage}%)${fileProgress}${currentFile}`)
+                lastLoggedChunk = completedChunks
               }
-            },
-            this.indexCancellationController
-          )
+            }
+          }
+
+          await Promise.race([
+            ragEngine.updateVaultIndex(
+              { reindexAll: shouldReindexAll },
+              onProgress,
+              this.indexCancellationController
+            ),
+            abortPromise
+          ])
 
           const status = await ragEngine.getIndexStatus()
 
@@ -1375,6 +1393,25 @@ class SmartComposerRAGServer {
             ],
           }
         } catch (error) {
+          if (this.indexCancellationController.isCancelled) {
+            console.error('[handleRebuildIndex] Index operation cancelled')
+            return {
+              content: [
+                {
+                  type: 'text',
+                  text: [
+                    `## Index ${shouldReindexAll ? 'Rebuild' : 'Update'} Cancelled`,
+                    '',
+                    '### Progress:',
+                    ...progressLog,
+                    '',
+                    '⚠️ Index generation was cancelled. The index contains partial data.',
+                    '💡 Run `rebuild_index` again to complete the indexing process.',
+                  ].join('\n'),
+                },
+              ],
+            }
+          }
           const errorMessage = error instanceof Error ? error.message : String(error)
           console.error('[handleRebuildIndex] Error during indexing:', errorMessage)
           return {
