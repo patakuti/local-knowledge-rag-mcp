@@ -148,6 +148,7 @@ export type CancellationController = {
   isCancelled: boolean
   cancel: () => void
   reset: () => void
+  signal: AbortSignal
 }
 
 export type QueryProgressState =
