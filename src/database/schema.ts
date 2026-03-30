@@ -109,6 +109,11 @@ export const createVectorIndexSQL = (dimension: number = 768) => `
   WITH (m = 16, ef_construction = 64);
 `
 
+// SQL for dropping vector similarity search index
+export const dropVectorIndexSQL = `
+  DROP INDEX IF EXISTS embeddings_embedding_idx;
+`
+
 // Alternative: IVFFlat index (faster to build, but requires training data)
 export const createIVFFlatIndexSQL = (lists: number = 100) => `
   CREATE INDEX IF NOT EXISTS embeddings_embedding_idx

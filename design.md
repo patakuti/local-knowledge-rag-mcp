@@ -40,7 +40,7 @@
   - Vector embedding generation
   - Integration with PostgreSQL database
   - Incremental update management
-  - HNSW index creation and management
+  - HNSW index creation and management (drop before bulk insert, recreate after for performance)
   - Real-time progress tracking with ProgressLogger (throttled to 500ms intervals)
   - **Concurrent update protection**: Uses VectorRepository's advisory locks to ensure safe multi-server updates
 - **Database**
@@ -256,7 +256,8 @@
 4. ProgressServer starts HTTP server on configured port (default: 3456)
 5. VectorManager scans the workspace
 6. Chunks modified files
-7. EmbeddingClient generates embedding vectors with real-time progress tracking:
+7. If chunks >= 100, drops HNSW vector index for bulk insert performance
+8. EmbeddingClient generates embedding vectors with real-time progress tracking:
    - Progress updates sent every 500ms (throttled)
    - Tracks chunk completion, file completion, and current file
    - Shows percentage completion
@@ -265,9 +266,10 @@
    - Shows "Cancel Indexing" button during active indexing
    - Handles rate limit notifications
    - **Cancellation support**: Checks cancellation flag before each batch
-8. VectorRepository saves to database in batches
-9. Returns detailed progress information with statistics
-10. ProgressLogger writes completion, error, or cancelled status
+9. VectorRepository saves to database in batches
+10. Recreates HNSW vector index (guaranteed via try/finally, even on cancellation or error)
+11. Returns detailed progress information with statistics
+12. ProgressLogger writes completion, error, or cancelled status
 
 ### Index Cancellation
 

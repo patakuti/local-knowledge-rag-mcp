@@ -13,7 +13,7 @@ import type {
 } from '../types/rag.types.js'
 import { EmbeddingError, IndexingError } from '../types/rag.types.js'
 import { VectorRepository } from './vector-repository.js'
-import { createEmbeddingsTableSQL, createVectorIndexSQL } from '../database/schema.js'
+import { createEmbeddingsTableSQL, createVectorIndexSQL, dropVectorIndexSQL } from '../database/schema.js'
 import { FileSystemUtils } from '../utils/file-utils.js'
 import { TextChunker, TextUtils } from '../utils/chunk-utils.js'
 import { ProgressLogger } from '../utils/progress-logger.js'
@@ -118,6 +118,21 @@ export class VectorManager {
       } else {
         throw error
       }
+    } finally {
+      client.release()
+    }
+  }
+
+  /**
+   * Drop vector similarity search index (HNSW)
+   * Used before bulk inserts to avoid per-row HNSW index maintenance overhead
+   */
+  async dropVectorIndex(): Promise<void> {
+    const client = await this.pool.connect()
+    try {
+      console.error('Dropping HNSW vector index for bulk insert performance...')
+      await client.query(dropVectorIndexSQL)
+      console.error('Vector index dropped.')
     } finally {
       client.release()
     }
@@ -303,19 +318,38 @@ export class VectorManager {
         completedFiles: 0,
       })
 
-      // Generate embeddings and save to database
-      const result = await this.processEmbeddings(
-        contentChunks,
-        embeddingModel,
-        filesToIndex.length,
-        updateProgress,
-        cancellationController
-      )
+      // Drop HNSW index before bulk inserts to avoid per-row index maintenance overhead.
+      // The index is recreated after all inserts complete (or on cancellation/error).
+      const BULK_INSERT_THRESHOLD = 100
+      const shouldManageIndex = contentChunks.length >= BULK_INSERT_THRESHOLD
+      let droppedIndex = false
 
-      // Log completion only if not cancelled
-      if (!result.wasCancelled) {
-        const durationSeconds = (Date.now() - startTime) / 1000
-        await this.progressLogger.logComplete(contentChunks.length, filesToIndex.length, durationSeconds)
+      if (shouldManageIndex && await this.hasVectorIndex()) {
+        await this.dropVectorIndex()
+        droppedIndex = true
+      }
+
+      try {
+        // Generate embeddings and save to database
+        const result = await this.processEmbeddings(
+          contentChunks,
+          embeddingModel,
+          filesToIndex.length,
+          updateProgress,
+          cancellationController
+        )
+
+        // Log completion only if not cancelled
+        if (!result.wasCancelled) {
+          const durationSeconds = (Date.now() - startTime) / 1000
+          await this.progressLogger.logComplete(contentChunks.length, filesToIndex.length, durationSeconds)
+        }
+      } finally {
+        // Always recreate the HNSW index if we dropped it
+        if (droppedIndex) {
+          console.error('Recreating HNSW vector index after bulk insert...')
+          await this.createVectorIndex(embeddingModel.dimension)
+        }
       }
     } catch (error) {
       // Log error
