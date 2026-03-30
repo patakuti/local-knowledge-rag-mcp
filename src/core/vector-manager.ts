@@ -582,7 +582,7 @@ export class VectorManager {
     cancellationController?: CancellationController
   ): Promise<{ wasCancelled: boolean }> {
     let completedChunks = 0
-    const batchSize = 10 // Smaller batch size for better cancellation responsiveness
+    const batchSize = 50
     const failedChunks: Array<{ path: string; error: string }> = []
 
     // Track completed files
@@ -590,21 +590,33 @@ export class VectorManager {
     let lastProgressUpdate = Date.now()
     const progressThrottleMs = 500 // Update progress at most every 500ms
 
+    // Pipeline: overlap embedding generation with DB insertion
+    let pendingInsert: Promise<void> | null = null
+
+    // Helper to check and handle cancellation
+    const checkCancelled = async (): Promise<boolean> => {
+      if (!cancellationController?.isCancelled) return false
+      // Wait for any pending DB insert to complete before reporting cancellation
+      if (pendingInsert) {
+        await pendingInsert
+        pendingInsert = null
+      }
+      await this.progressLogger.logCancelled(completedChunks, contentChunks.length, totalFiles, processedFiles.size)
+      const progress: IndexProgress = {
+        completedChunks,
+        totalChunks: contentChunks.length,
+        totalFiles,
+        completedFiles: processedFiles.size,
+        isCancelled: true,
+      }
+      updateProgress?.(progress)
+      return true
+    }
+
     // Process chunks in batches
     for (let i = 0; i < contentChunks.length; i += batchSize) {
       // Check for cancellation before processing each batch
-      if (cancellationController?.isCancelled) {
-        await this.progressLogger.logCancelled(completedChunks, contentChunks.length, totalFiles, processedFiles.size)
-        const progress: IndexProgress = {
-          completedChunks,
-          totalChunks: contentChunks.length,
-          totalFiles,
-          completedFiles: processedFiles.size,
-          isCancelled: true,
-        }
-        updateProgress?.(progress)
-        return { wasCancelled: true }
-      }
+      if (await checkCancelled()) return { wasCancelled: true }
 
       const batch = contentChunks.slice(i, i + batchSize)
 
@@ -701,40 +713,20 @@ export class VectorManager {
         })
       )
 
-      // Check for cancellation after batch processing completes
-      if (cancellationController?.isCancelled) {
-        await this.progressLogger.logCancelled(completedChunks, contentChunks.length, totalFiles, processedFiles.size)
-        const progress: IndexProgress = {
-          completedChunks,
-          totalChunks: contentChunks.length,
-          totalFiles,
-          completedFiles: processedFiles.size,
-          isCancelled: true,
-        }
-        updateProgress?.(progress)
-        return { wasCancelled: true }
+      // Check for cancellation after batch embedding completes
+      if (await checkCancelled()) return { wasCancelled: true }
+
+      // Wait for previous batch's DB insert to complete before starting a new one
+      if (pendingInsert) {
+        await pendingInsert
+        pendingInsert = null
       }
 
-      // Filter out failed embeddings and insert valid ones
+      // Filter out failed embeddings and start DB insert in background (pipelined)
       const validEmbeddings = embeddingBatch.filter((emb): emb is InsertEmbedding => emb !== null)
 
       if (validEmbeddings.length > 0) {
-        await this.repository.insertVectors(validEmbeddings)
-      }
-
-      // Check for cancellation one more time before sending progress update
-      // This prevents sending inflated progress if cancellation happened during DB insert
-      if (cancellationController?.isCancelled) {
-        await this.progressLogger.logCancelled(completedChunks, contentChunks.length, totalFiles, processedFiles.size)
-        const progress: IndexProgress = {
-          completedChunks,
-          totalChunks: contentChunks.length,
-          totalFiles,
-          completedFiles: processedFiles.size,
-          isCancelled: true,
-        }
-        updateProgress?.(progress)
-        return { wasCancelled: true }
+        pendingInsert = this.repository.insertVectors(validEmbeddings)
       }
 
       // Send progress update at end of each batch
@@ -746,11 +738,12 @@ export class VectorManager {
       }
       updateProgress?.(progress)
       await this.progressLogger.logProgress(progress)
+    }
 
-      // Small delay between batches to be nice to APIs
-      if (i + batchSize < contentChunks.length) {
-        await new Promise(resolve => setTimeout(resolve, 100))
-      }
+    // Wait for the final DB insert to complete
+    if (pendingInsert) {
+      await pendingInsert
+      pendingInsert = null
     }
 
     if (failedChunks.length > 0) {
