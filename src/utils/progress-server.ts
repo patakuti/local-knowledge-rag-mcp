@@ -895,14 +895,16 @@ export class ProgressServer {
             progressPollingInterval = 5000;
             console.log('Indexing finished, switching to 5s polling');
           }
-          // Refresh stats now that indexing is done
           if (wasIndexing) {
+            // Re-enable buttons now that indexing is done
+            setIndexingButtonsDisabled(false);
+            // Refresh stats now that indexing is done
             fetchSchemaStatus();
           }
         }
 
-        // Update log if new entries
-        if (entries.length > lastEntryCount) {
+        // Update log if new entries (or if log was reset for a new operation)
+        if (entries.length !== lastEntryCount) {
           updateLog(entries);
           lastEntryCount = entries.length;
         }
@@ -1018,14 +1020,17 @@ export class ProgressServer {
       }
     }
 
-    async function updateIndex() {
+    function setIndexingButtonsDisabled(disabled) {
       const updateButton = document.getElementById('update-index-button');
+      const rebuildButton = document.getElementById('rebuild-index-button');
+      updateButton.disabled = disabled;
+      rebuildButton.disabled = disabled;
+    }
 
-      // Show loading state
-      updateButton.disabled = true;
-      updateButton.textContent = '⏳ Requesting...';
-
+    async function updateIndex() {
       try {
+        setIndexingButtonsDisabled(true);
+
         const response = await fetch('/rebuild-index', {
           method: 'POST',
           headers: {
@@ -1040,29 +1045,23 @@ export class ProgressServer {
           throw new Error(result.error || 'Server error');
         }
 
-        // Server accepted the request; progress is tracked via polling
-        isIndexing = true;
+        // Server accepted; buttons stay disabled until indexing completes
+        onIndexingAccepted();
       } catch (error) {
         console.error('Update index error:', error);
         alert('Failed to update index: ' + (error.message || 'Network error. Please check if the server is running.'));
-      } finally {
-        updateButton.disabled = false;
-        updateButton.textContent = '📝 Update Index';
+        setIndexingButtonsDisabled(false);
       }
     }
 
     async function rebuildIndex() {
-      const rebuildButton = document.getElementById('rebuild-index-button');
-
       if (!confirm('⚠️ WARNING: This will rebuild the entire index from scratch. All files will be re-indexed, which may take time and consume API quota. Are you sure?')) {
         return;
       }
 
-      // Show loading state
-      rebuildButton.disabled = true;
-      rebuildButton.textContent = '⏳ Requesting...';
-
       try {
+        setIndexingButtonsDisabled(true);
+
         const response = await fetch('/rebuild-index', {
           method: 'POST',
           headers: {
@@ -1077,15 +1076,20 @@ export class ProgressServer {
           throw new Error(result.error || 'Server error');
         }
 
-        // Server accepted the request; progress is tracked via polling
-        isIndexing = true;
+        // Server accepted; buttons stay disabled until indexing completes
+        onIndexingAccepted();
       } catch (error) {
         console.error('Rebuild index error:', error);
         alert('Failed to rebuild index: ' + (error.message || 'Network error. Please check if the server is running.'));
-      } finally {
-        rebuildButton.disabled = false;
-        rebuildButton.textContent = '🔄 Rebuild Index';
+        setIndexingButtonsDisabled(false);
       }
+    }
+
+    function onIndexingAccepted() {
+      isIndexing = true;
+      lastEntryCount = 0; // Reset so new operation's log entries are displayed
+      progressPollingInterval = 2000; // Poll faster to catch the start
+      scheduleNextProgressFetch();
     }
 
     async function cancelIndexing() {
