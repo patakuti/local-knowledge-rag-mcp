@@ -120,7 +120,7 @@
 - File system operations
 - File pattern matching (glob, minimatch)
 - File information retrieval
-- `getFilesToIndex()`: stat() calls are parallelized in batches of 200 for performance on large repositories
+- `getFilesToIndex()`: stat() calls are parallelized in batches of 50 for performance on large repositories
 
 #### chunk-utils.ts
 

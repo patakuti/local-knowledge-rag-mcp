@@ -38,8 +38,9 @@ export class FileSystemUtils {
       )
     })
 
-    // Get file stats in parallel (batched to avoid opening too many file descriptors)
-    const STAT_BATCH_SIZE = 200
+    // Get file stats in parallel (batched to avoid saturating the libuv thread pool
+    // and starving other I/O like DB operations during indexing)
+    const STAT_BATCH_SIZE = 50
     const fileInfos: FileInfo[] = []
 
     for (let i = 0; i < filteredFiles.length; i += STAT_BATCH_SIZE) {
