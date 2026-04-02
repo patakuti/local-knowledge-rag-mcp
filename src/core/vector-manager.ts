@@ -207,10 +207,21 @@ export class VectorManager {
           includePatterns: options.includePatterns,
           excludePatterns: options.excludePatterns,
         })
+        if (cancellationController?.isCancelled) {
+          await this.progressLogger.logCancelled(0, 0, 0, 0)
+          updateProgress?.({ completedChunks: 0, totalChunks: 0, totalFiles: 0, isCancelled: true })
+          return
+        }
         await this.repository.clearAllVectors(this.workspaceId, embeddingModel)
       } else {
         // Incremental update: clean up deleted files first
         await this.deleteVectorsForDeletedFiles(embeddingModel, options)
+
+        if (cancellationController?.isCancelled) {
+          await this.progressLogger.logCancelled(0, 0, 0, 0)
+          updateProgress?.({ completedChunks: 0, totalChunks: 0, totalFiles: 0, isCancelled: true })
+          return
+        }
 
         // Get files that need indexing (new or modified)
         filesToIndex = await this.getFilesToIndex({
@@ -218,6 +229,12 @@ export class VectorManager {
           includePatterns: options.includePatterns,
           excludePatterns: options.excludePatterns,
         })
+
+        if (cancellationController?.isCancelled) {
+          await this.progressLogger.logCancelled(0, 0, 0, 0)
+          updateProgress?.({ completedChunks: 0, totalChunks: 0, totalFiles: 0, isCancelled: true })
+          return
+        }
 
         // Remove existing vectors for files that will be reindexed
         if (filesToIndex.length > 0) {
@@ -230,6 +247,8 @@ export class VectorManager {
       }
 
       if (filesToIndex.length === 0) {
+        const durationSeconds = (Date.now() - startTime) / 1000
+        await this.progressLogger.logComplete(0, 0, durationSeconds)
         updateProgress?.({
           completedChunks: 0,
           totalChunks: 0,

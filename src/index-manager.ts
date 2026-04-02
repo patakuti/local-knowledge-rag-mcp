@@ -248,6 +248,11 @@ function setupHandlers(
         // Reset cancellation controller before starting
         indexCancellationController.reset()
 
+        // Initialize progress logger (clears old log) so the client
+        // sees a clean state immediately
+        const progressLogger = ragEngine.getVectorManager().getProgressLogger()
+        await progressLogger.initialize()
+
         const progressLog: string[] = []
         let startTime = Date.now()
         let lastLoggedChunk = 0
@@ -277,24 +282,18 @@ function setupHandlers(
         }
 
         try {
-          // Race updateVaultIndex against abort signal so the mutex is released
-          // immediately on cancellation, even if a DB/API call is still in-flight
-          const abortPromise = new Promise<never>((_, reject) => {
-            const signal = indexCancellationController.signal
-            if (signal.aborted) { reject(new Error('Cancelled')); return }
-            signal.addEventListener('abort', () => reject(new Error('Cancelled')), { once: true })
-          })
+          // Await the full operation (do NOT use Promise.race with abort).
+          // Promise.race would release the mutex while updateVaultIndex
+          // still holds the DB advisory lock, blocking subsequent operations.
+          // The cancellation controller is passed through and checked at
+          // regular intervals within updateVaultIndex.
+          await ragEngine.updateVaultIndex(
+            { reindexAll: shouldReindexAll },
+            onProgress,
+            indexCancellationController
+          )
 
-          await Promise.race([
-            ragEngine.updateVaultIndex(
-              { reindexAll: shouldReindexAll },
-              onProgress,
-              indexCancellationController
-            ),
-            abortPromise
-          ])
-
-          if (wasCancelled) {
+          if (wasCancelled || indexCancellationController.isCancelled) {
             return {
               content: [{
                 type: 'text',
