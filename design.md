@@ -257,7 +257,9 @@
 5. VectorManager scans the workspace
 6. Chunks modified files
 7. If chunks >= 100, drops HNSW vector index for bulk insert performance
-8. EmbeddingClient generates embedding vectors with real-time progress tracking:
+8. EmbeddingClient generates embedding vectors with pipelined processing:
+   - Batch size: 50 chunks per batch
+   - **Pipelined**: DB insert runs in background while next batch's embeddings are generated
    - Progress updates sent every 500ms (throttled)
    - Tracks chunk completion, file completion, and current file
    - Shows percentage completion
@@ -265,8 +267,8 @@
    - Progress viewer polls log file every second and updates UI
    - Shows "Cancel Indexing" button during active indexing
    - Handles rate limit notifications
-   - **Cancellation support**: Checks cancellation flag before each batch
-9. VectorRepository saves to database in batches
+   - **Cancellation support**: Checks cancellation flag before each batch, waits for pending DB insert on cancel
+9. VectorRepository saves to database in batches (pipelined with embedding generation)
 10. Recreates HNSW vector index (guaranteed via try/finally, even on cancellation or error)
 11. Returns detailed progress information with statistics
 12. ProgressLogger writes completion, error, or cancelled status

@@ -169,21 +169,32 @@ export class VectorRepository {
     if (filePaths.length === 0) {
       return []
     }
-    const results = await this.db
-      .select()
-      .from(embeddingTable)
-      .where(
-        and(
-          eq(embeddingTable.workspaceId, workspaceId),
-          inArray(embeddingTable.path, filePaths),
-          eq(embeddingTable.model, embeddingModel.id),
-        ),
-      )
+    // Each filePath is 1 parameter, plus 2 fixed parameters (workspaceId, model).
+    // Batch to stay well under PostgreSQL's 65,535 parameter limit.
+    const BATCH_SIZE = 20000
+    const allResults: SelectEmbedding[] = []
 
-    // Filter out null embeddings
-    return results.filter((result): result is SelectEmbedding =>
-      result.embedding !== null
-    ) as SelectEmbedding[]
+    for (let i = 0; i < filePaths.length; i += BATCH_SIZE) {
+      const batch = filePaths.slice(i, i + BATCH_SIZE)
+      const results = await this.db
+        .select()
+        .from(embeddingTable)
+        .where(
+          and(
+            eq(embeddingTable.workspaceId, workspaceId),
+            inArray(embeddingTable.path, batch),
+            eq(embeddingTable.model, embeddingModel.id),
+          ),
+        )
+
+      // Filter out null embeddings
+      const valid = results.filter((result): result is SelectEmbedding =>
+        result.embedding !== null
+      ) as SelectEmbedding[]
+      allResults.push(...valid)
+    }
+
+    return allResults
   }
 
   async deleteVectorsForMultipleFiles(
@@ -453,28 +464,36 @@ export class VectorRepository {
       return new Map()
     }
 
-    const results = await this.db
-      .select({
-        path: embeddingTable.path,
-        mtime: embeddingTable.mtime,
-      })
-      .from(embeddingTable)
-      .where(
-        and(
-          eq(embeddingTable.workspaceId, workspaceId),
-          inArray(embeddingTable.path, filePaths),
-          eq(embeddingTable.model, embeddingModel.id),
-        ),
-      )
-
-    // Return the latest mtime for each file (in case of multiple chunks)
+    // Each filePath is 1 parameter, plus 2 fixed parameters (workspaceId, model).
+    // Batch to stay well under PostgreSQL's 65,535 parameter limit.
+    const BATCH_SIZE = 20000
     const mtimeMap = new Map<string, number>()
-    for (const result of results) {
-      const currentMtime = mtimeMap.get(result.path) || 0
-      if (result.mtime > currentMtime) {
-        mtimeMap.set(result.path, result.mtime)
+
+    for (let i = 0; i < filePaths.length; i += BATCH_SIZE) {
+      const batch = filePaths.slice(i, i + BATCH_SIZE)
+      const results = await this.db
+        .select({
+          path: embeddingTable.path,
+          mtime: embeddingTable.mtime,
+        })
+        .from(embeddingTable)
+        .where(
+          and(
+            eq(embeddingTable.workspaceId, workspaceId),
+            inArray(embeddingTable.path, batch),
+            eq(embeddingTable.model, embeddingModel.id),
+          ),
+        )
+
+      // Return the latest mtime for each file (in case of multiple chunks)
+      for (const result of results) {
+        const currentMtime = mtimeMap.get(result.path) || 0
+        if (result.mtime > currentMtime) {
+          mtimeMap.set(result.path, result.mtime)
+        }
       }
     }
+
     return mtimeMap
   }
 
