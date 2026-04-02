@@ -896,19 +896,19 @@ export class VectorManager {
     // Filter out empty files (same logic as getFilesToReindex)
     // Empty files are not indexed, so they should not be counted in statistics
     const indexableFiles = allFileInfos.filter(file => file.stat.size > 0)
-    const indexableFilePaths = indexableFiles.map(f => f.path)
+    const indexableFilePathSet = new Set(indexableFiles.map(f => f.path))
     const totalFilesInProject = indexableFiles.length
 
-    // Get indexed files from database
-    const indexedFiles = await this.repository.getTotalIndexedFiles(this.workspaceId, embeddingModel)
-
-    // Get indexed file paths from database
-    const indexedFilePaths = await this.repository.getIndexedFiles(this.workspaceId, embeddingModel)
+    // Get indexed files from database (run both queries in parallel)
+    const [indexedFiles, indexedFilePaths] = await Promise.all([
+      this.repository.getTotalIndexedFiles(this.workspaceId, embeddingModel),
+      this.repository.getIndexedFiles(this.workspaceId, embeddingModel)
+    ])
 
     // Count deleted files (in DB but not in filesystem or no longer indexable)
     let deletedFiles = 0
     for (const dbPath of indexedFilePaths) {
-      if (!indexableFilePaths.includes(dbPath)) {
+      if (!indexableFilePathSet.has(dbPath)) {
         deletedFiles++
       }
     }

@@ -38,25 +38,34 @@ export class FileSystemUtils {
       )
     })
 
-    // Get file stats
+    // Get file stats in parallel (batched to avoid opening too many file descriptors)
+    const STAT_BATCH_SIZE = 200
     const fileInfos: FileInfo[] = []
-    for (const filePath of filteredFiles) {
-      try {
-        const fullPath = path.join(this.workspacePath, filePath)
-        const fileStat = await stat(fullPath)
 
-        if (fileStat.isFile()) {
-          fileInfos.push({
-            path: filePath,
-            stat: {
-              mtime: fileStat.mtime.getTime(),
-              size: fileStat.size
-            }
-          })
+    for (let i = 0; i < filteredFiles.length; i += STAT_BATCH_SIZE) {
+      const batch = filteredFiles.slice(i, i + STAT_BATCH_SIZE)
+      const results = await Promise.allSettled(
+        batch.map(async (filePath) => {
+          const fullPath = path.join(this.workspacePath, filePath)
+          const fileStat = await stat(fullPath)
+          return { filePath, fileStat }
+        })
+      )
+
+      for (const result of results) {
+        if (result.status === 'fulfilled') {
+          const { filePath, fileStat } = result.value
+          if (fileStat.isFile()) {
+            fileInfos.push({
+              path: filePath,
+              stat: {
+                mtime: fileStat.mtime.getTime(),
+                size: fileStat.size
+              }
+            })
+          }
         }
-      } catch (error) {
-        // Skip files that can't be accessed
-        console.warn(`Cannot access file ${filePath}:`, error)
+        // Skip files that can't be accessed (rejected promises)
       }
     }
 

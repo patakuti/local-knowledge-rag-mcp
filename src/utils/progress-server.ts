@@ -12,6 +12,7 @@ export class ProgressServer {
   private rebuildIndexFn?: (reindexAll: boolean) => Promise<any>
   private cancelIndexingFn?: () => void
   private listTemplatesFn?: () => Promise<any>
+  private indexingInProgress: boolean = false
   // Connection monitoring
   private activeConnections: Set<net.Socket> = new Set()
   private connectionCallbacks: Array<() => void> = []
@@ -144,6 +145,7 @@ export class ProgressServer {
           }
           try {
             const status = await this.getSchemaStatusFn()
+            status.indexingInProgress = this.indexingInProgress
             res.writeHead(200, { 'Content-Type': 'application/json' })
             res.end(JSON.stringify(status))
           } catch (error) {
@@ -199,40 +201,44 @@ export class ProgressServer {
             res.writeHead(500, { 'Content-Type': 'application/json' })
             res.end(JSON.stringify({ error: 'Failed to read request body' }))
           })
-          req.on('end', async () => {
+          req.on('end', () => {
             try {
               const params = body ? JSON.parse(body) : {}
               const reindexAll = params.reindex_all || false
               const requestTimestamp = new Date().toISOString()
               console.error(`[ProgressServer] Rebuild index requested at ${requestTimestamp} with reindexAll:`, reindexAll)
 
-              // Call the rebuild function and handle the MCP response format
-              console.error('[ProgressServer RebuildIndexHandler] Rebuild index called with reindexAll:', reindexAll)
-              const mcpResult = await this.rebuildIndexFn!(reindexAll)
-              console.error('[ProgressServer RebuildIndexHandler] Rebuild index completed, isError:', mcpResult.isError)
-
-              // Extract the message from MCP response format
-              const message = mcpResult.content && mcpResult.content[0] && mcpResult.content[0].text
-                ? mcpResult.content[0].text.split('\n')[0] // Get first line as message
-                : (reindexAll ? 'Rebuild' : 'Update') + ' started'
-
-              // Check if the operation was rejected or failed
-              if (mcpResult.isError) {
-                console.error('[ProgressServer] Rebuild index rejected (concurrent request):', message)
+              if (this.indexingInProgress) {
                 res.writeHead(409, { 'Content-Type': 'application/json' })
                 res.end(JSON.stringify({
                   success: false,
-                  error: message
+                  error: 'Index operation already in progress'
                 }))
-              } else {
-                res.writeHead(200, { 'Content-Type': 'application/json' })
-                res.end(JSON.stringify({
-                  success: true,
-                  message: message
-                }))
+                return
               }
+
+              // Mark indexing as in progress and respond immediately
+              this.indexingInProgress = true
+              res.writeHead(200, { 'Content-Type': 'application/json' })
+              res.end(JSON.stringify({
+                success: true,
+                message: (reindexAll ? 'Rebuild' : 'Update') + ' started'
+              }))
+
+              // Run the rebuild in the background
+              console.error('[ProgressServer RebuildIndexHandler] Rebuild index called with reindexAll:', reindexAll)
+              this.rebuildIndexFn!(reindexAll)
+                .then((mcpResult) => {
+                  console.error('[ProgressServer RebuildIndexHandler] Rebuild index completed, isError:', mcpResult.isError)
+                })
+                .catch((error) => {
+                  console.error('[ProgressServer] Error in rebuild-index:', error)
+                })
+                .finally(() => {
+                  this.indexingInProgress = false
+                })
             } catch (error) {
-              console.error('[ProgressServer] Error in rebuild-index:', error)
+              console.error('[ProgressServer] Error parsing rebuild-index request:', error)
               res.writeHead(500, { 'Content-Type': 'application/json' })
               res.end(JSON.stringify({
                 success: false,
@@ -849,6 +855,7 @@ export class ProgressServer {
     let lastEntryCount = 0;
     let progressPollingInterval = 5000; // Default 5 seconds
     let progressTimer = null;
+    let isIndexing = false; // Tracks whether indexing is in progress (server-reported)
 
     function scheduleNextProgressFetch() {
       if (progressTimer) {
@@ -874,16 +881,23 @@ export class ProgressServer {
 
         // Check if indexing is in progress and adjust polling interval
         if (latestEntry.type === 'start' || latestEntry.type === 'progress') {
+          isIndexing = true;
           // Indexing in progress - poll every 2 seconds
           if (progressPollingInterval !== 2000) {
             progressPollingInterval = 2000;
             console.log('Indexing in progress, switching to 2s polling');
           }
         } else {
+          const wasIndexing = isIndexing;
+          isIndexing = false;
           // Indexing finished/error/cancelled - poll every 5 seconds
           if (progressPollingInterval !== 5000) {
             progressPollingInterval = 5000;
             console.log('Indexing finished, switching to 5s polling');
+          }
+          // Refresh stats now that indexing is done
+          if (wasIndexing) {
+            fetchSchemaStatus();
           }
         }
 
@@ -900,6 +914,13 @@ export class ProgressServer {
     }
 
     async function fetchSchemaStatus(isManual = false) {
+      // Skip periodic polling during indexing to avoid heavy glob+stat
+      // competing with the indexing process for the event loop and DB pool.
+      // Manual refresh and post-completion refresh are always allowed.
+      if (!isManual && isIndexing) {
+        return;
+      }
+
       const reloadButton = document.getElementById('reload-stats-button');
       try {
         if (isManual && reloadButton) {
@@ -914,6 +935,9 @@ export class ProgressServer {
           console.error('Schema status error:', status.error);
           return;
         }
+
+        // Update local indexing state from server
+        isIndexing = !!status.indexingInProgress;
 
         updateSchemaStatus(status);
         // Trigger UI update with latest progress data
@@ -999,7 +1023,7 @@ export class ProgressServer {
 
       // Show loading state
       updateButton.disabled = true;
-      updateButton.textContent = '⏳ Updating...';
+      updateButton.textContent = '⏳ Requesting...';
 
       try {
         const response = await fetch('/rebuild-index', {
@@ -1010,19 +1034,14 @@ export class ProgressServer {
           body: JSON.stringify({ reindex_all: false })
         });
 
+        const result = await response.json();
+
         if (!response.ok) {
-          let errorMsg = 'Server error';
-          try {
-            const result = await response.json();
-            errorMsg = result.error || errorMsg;
-          } catch (e) {
-            errorMsg = response.statusText || errorMsg;
-          }
-          throw new Error(errorMsg);
+          throw new Error(result.error || 'Server error');
         }
 
-        const result = await response.json();
-        console.error('Update index result:', result);
+        // Server accepted the request; progress is tracked via polling
+        isIndexing = true;
       } catch (error) {
         console.error('Update index error:', error);
         alert('Failed to update index: ' + (error.message || 'Network error. Please check if the server is running.'));
@@ -1041,7 +1060,7 @@ export class ProgressServer {
 
       // Show loading state
       rebuildButton.disabled = true;
-      rebuildButton.textContent = '⏳ Rebuilding...';
+      rebuildButton.textContent = '⏳ Requesting...';
 
       try {
         const response = await fetch('/rebuild-index', {
@@ -1052,19 +1071,14 @@ export class ProgressServer {
           body: JSON.stringify({ reindex_all: true })
         });
 
+        const result = await response.json();
+
         if (!response.ok) {
-          let errorMsg = 'Server error';
-          try {
-            const result = await response.json();
-            errorMsg = result.error || errorMsg;
-          } catch (e) {
-            errorMsg = response.statusText || errorMsg;
-          }
-          throw new Error(errorMsg);
+          throw new Error(result.error || 'Server error');
         }
 
-        const result = await response.json();
-        console.error('Rebuild index result:', result);
+        // Server accepted the request; progress is tracked via polling
+        isIndexing = true;
       } catch (error) {
         console.error('Rebuild index error:', error);
         alert('Failed to rebuild index: ' + (error.message || 'Network error. Please check if the server is running.'));
