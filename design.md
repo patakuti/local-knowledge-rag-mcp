@@ -120,6 +120,7 @@
 - File system operations
 - File pattern matching (glob, minimatch)
 - File information retrieval
+- `getFilesToIndex()`: stat() calls are parallelized in batches of 50 for performance on large repositories
 
 #### chunk-utils.ts
 
@@ -166,8 +167,12 @@
     - Accepts JSON body: `{ "reindex_all": true/false }`
     - `reindex_all: false` performs incremental update
     - `reindex_all: true` performs full rebuild
+    - Returns immediately with `{ success: true }` and runs indexing in background
+    - Returns 409 if an operation is already in progress
   - `/cancel-indexing` (POST) requests cancellation of ongoing indexing operation
+- `/schema-status` response includes `indexingInProgress` flag
 - Polls log file and updates UI every second
+- **Performance optimization**: Periodic `/schema-status` polling (60s interval) is automatically suspended during indexing to avoid heavy filesystem operations (glob + stat on entire workspace) competing with the indexing process for the event loop and DB connection pool
 - Index Manager displays:
   - **Project Statistics Section**: Overall project file statistics (Total Files, Indexed Files, Not Indexed, Deleted Files)
   - **Indexing Status & Operations Section**: Combined section with status, progress, and control buttons

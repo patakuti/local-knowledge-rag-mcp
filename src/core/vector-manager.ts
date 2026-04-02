@@ -207,10 +207,21 @@ export class VectorManager {
           includePatterns: options.includePatterns,
           excludePatterns: options.excludePatterns,
         })
+        if (cancellationController?.isCancelled) {
+          await this.progressLogger.logCancelled(0, 0, 0, 0)
+          updateProgress?.({ completedChunks: 0, totalChunks: 0, totalFiles: 0, isCancelled: true })
+          return
+        }
         await this.repository.clearAllVectors(this.workspaceId, embeddingModel)
       } else {
         // Incremental update: clean up deleted files first
         await this.deleteVectorsForDeletedFiles(embeddingModel, options)
+
+        if (cancellationController?.isCancelled) {
+          await this.progressLogger.logCancelled(0, 0, 0, 0)
+          updateProgress?.({ completedChunks: 0, totalChunks: 0, totalFiles: 0, isCancelled: true })
+          return
+        }
 
         // Get files that need indexing (new or modified)
         filesToIndex = await this.getFilesToIndex({
@@ -218,6 +229,12 @@ export class VectorManager {
           includePatterns: options.includePatterns,
           excludePatterns: options.excludePatterns,
         })
+
+        if (cancellationController?.isCancelled) {
+          await this.progressLogger.logCancelled(0, 0, 0, 0)
+          updateProgress?.({ completedChunks: 0, totalChunks: 0, totalFiles: 0, isCancelled: true })
+          return
+        }
 
         // Remove existing vectors for files that will be reindexed
         if (filesToIndex.length > 0) {
@@ -230,6 +247,8 @@ export class VectorManager {
       }
 
       if (filesToIndex.length === 0) {
+        const durationSeconds = (Date.now() - startTime) / 1000
+        await this.progressLogger.logComplete(0, 0, durationSeconds)
         updateProgress?.({
           completedChunks: 0,
           totalChunks: 0,
@@ -896,19 +915,19 @@ export class VectorManager {
     // Filter out empty files (same logic as getFilesToReindex)
     // Empty files are not indexed, so they should not be counted in statistics
     const indexableFiles = allFileInfos.filter(file => file.stat.size > 0)
-    const indexableFilePaths = indexableFiles.map(f => f.path)
+    const indexableFilePathSet = new Set(indexableFiles.map(f => f.path))
     const totalFilesInProject = indexableFiles.length
 
-    // Get indexed files from database
-    const indexedFiles = await this.repository.getTotalIndexedFiles(this.workspaceId, embeddingModel)
-
-    // Get indexed file paths from database
-    const indexedFilePaths = await this.repository.getIndexedFiles(this.workspaceId, embeddingModel)
+    // Get indexed files from database (run both queries in parallel)
+    const [indexedFiles, indexedFilePaths] = await Promise.all([
+      this.repository.getTotalIndexedFiles(this.workspaceId, embeddingModel),
+      this.repository.getIndexedFiles(this.workspaceId, embeddingModel)
+    ])
 
     // Count deleted files (in DB but not in filesystem or no longer indexable)
     let deletedFiles = 0
     for (const dbPath of indexedFilePaths) {
-      if (!indexableFilePaths.includes(dbPath)) {
+      if (!indexableFilePathSet.has(dbPath)) {
         deletedFiles++
       }
     }

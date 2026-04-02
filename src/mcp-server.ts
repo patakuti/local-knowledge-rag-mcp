@@ -1305,14 +1305,6 @@ class SmartComposerRAGServer {
         let wasCancelled = false
 
         try {
-          // Race updateVaultIndex against abort signal so the mutex is released
-          // immediately on cancellation, even if a DB/API call is still in-flight
-          const abortPromise = new Promise<never>((_, reject) => {
-            const signal = this.indexCancellationController.signal
-            if (signal.aborted) { reject(new Error('Cancelled')); return }
-            signal.addEventListener('abort', () => reject(new Error('Cancelled')), { once: true })
-          })
-
           const onProgress = (progress: QueryProgressState) => {
             if (progress.type === 'indexing') {
               const { completedChunks, totalChunks, totalFiles, currentFileName, completedFiles, waitingForRateLimit, isCancelled } = progress.indexProgress
@@ -1337,18 +1329,18 @@ class SmartComposerRAGServer {
             }
           }
 
-          await Promise.race([
-            ragEngine.updateVaultIndex(
-              { reindexAll: shouldReindexAll },
-              onProgress,
-              this.indexCancellationController
-            ),
-            abortPromise
-          ])
+          // Await the full operation (do NOT use Promise.race with abort).
+          // Promise.race would release the mutex while updateVaultIndex
+          // still holds the DB advisory lock, blocking subsequent operations.
+          await ragEngine.updateVaultIndex(
+            { reindexAll: shouldReindexAll },
+            onProgress,
+            this.indexCancellationController
+          )
 
           const status = await ragEngine.getIndexStatus()
 
-          if (wasCancelled) {
+          if (wasCancelled || this.indexCancellationController.isCancelled) {
             return {
               content: [
                 {
