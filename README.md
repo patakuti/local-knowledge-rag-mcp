@@ -109,20 +109,13 @@ EMBEDDING_MODEL=nomic-embed-text
 
 ### 4. Add to Claude Code
 
-Add this MCP server to your Claude Code configuration:
+Add this MCP server to Claude Code:
 
-```json
-{
-  "mcpServers": {
-    "local-knowledge-rag": {
-      "command": "node",
-      "args": ["/path/to/local-knowledge-rag-mcp/dist/mcp-server.js"]
-    }
-  }
-}
+```bash
+claude mcp add local-knowledge-rag -- node /path/to/local-knowledge-rag-mcp/dist/mcp-server.js
 ```
 
-**Note:** Environment variables are loaded from `.env` file automatically. Do not add them to this configuration for security reasons.
+**Note:** Environment variables are loaded from `.env` file automatically. Do not add them to MCP server configuration for security reasons.
 
 ### 5. Start using it!
 
