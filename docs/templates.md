@@ -26,7 +26,7 @@ Simple report format with file-based sections.
 - `file_name_with_line` (string): File path with line numbers
 - `file_uri` (string): Clickable file URI
 - `section_summary` (string): Section description
-- `section_quote` (string): Code/text quote
+- `section_quote` (string): Code/text quote (blockquote-formatted)
 
 ### paper
 
@@ -149,10 +149,9 @@ Create `./templates/your-template-name.md`:
 
 **Summary:** {{section_summary}}
 
-**Code:**
-```
+**Reference:**
+
 {{section_quote}}
-```
 
 [View in editor]({{file_uri}})
 
@@ -215,7 +214,7 @@ Create `./templates/your-template-name.md.json`:
           },
           "section_quote": {
             "type": "string",
-            "description": "Code/text quote"
+            "description": "Code/text quote (blockquote-formatted)"
           }
         }
       }
@@ -448,7 +447,7 @@ Include summaries before details:
 | `file_name_with_line` | string | File path with line numbers |
 | `file_uri` | string | Clickable VS Code URI |
 | `section_summary` | string | Section description |
-| `section_quote` | string | Code/text quote |
+| `section_quote` | string | Code/text quote (blockquote-formatted) |
 | `similarity_score` | number | Similarity score (0.0-1.0) |
 | `language` | string | Detected programming language |
 

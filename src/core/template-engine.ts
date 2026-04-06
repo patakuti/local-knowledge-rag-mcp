@@ -131,7 +131,7 @@ export class TemplateEngine {
         file_name: fileName,
         file_name_with_line: fileNameWithLine,
         section_summary: section.summary,
-        section_quote: quote,
+        section_quote: this.formatAsBlockquote(quote),
         file_uri: fileUri,
         start_line: section.startLine,
         end_line: section.endLine
@@ -530,7 +530,7 @@ export class TemplateEngine {
         file_name: fileName,
         file_name_with_line: fileNameWithLine,
         section_summary: summary,
-        section_quote: quote,
+        section_quote: this.formatAsBlockquote(quote),
         file_uri: fileUri,
         start_line: quoteStartLine,
         end_line: quoteEndLine,
@@ -690,6 +690,10 @@ export class TemplateEngine {
 
     const title = cleanQuery || 'search'
     return `${timestamp}_${title}.md`
+  }
+
+  private formatAsBlockquote(text: string): string {
+    return text.split('\n').map(line => `> ${line}`).join('\n')
   }
 
   private extractFileName(path: string): string {

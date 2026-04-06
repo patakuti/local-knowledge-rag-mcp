@@ -14,9 +14,8 @@
 {{section_summary}}
 
 **Reference**:
-```
+
 {{section_quote}}
-```
 
 ---
 
