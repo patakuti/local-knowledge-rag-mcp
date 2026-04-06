@@ -131,7 +131,7 @@ export class TemplateEngine {
         file_name: fileName,
         file_name_with_line: fileNameWithLine,
         section_summary: section.summary,
-        section_quote: this.formatAsBlockquote(quote),
+        section_quote: quote,
         file_uri: fileUri,
         start_line: section.startLine,
         end_line: section.endLine
@@ -176,7 +176,7 @@ export class TemplateEngine {
         sectionContent = sectionContent.replace(/\{\{file_name\}\}/g, section.file_name)
         sectionContent = sectionContent.replace(/\{\{file_name_with_line\}\}/g, section.file_name_with_line || section.file_name)
         sectionContent = sectionContent.replace(/\{\{section_summary\}\}/g, section.section_summary)
-        sectionContent = sectionContent.replace(/\{\{section_quote\}\}/g, section.section_quote)
+        sectionContent = sectionContent.replace(/\{\{section_quote\}\}/g, this.formatAsBlockquote(section.section_quote))
         sectionContent = sectionContent.replace(/\{\{file_uri\}\}/g, section.file_uri)
 
         // Conditional line numbers (kept for backward compatibility)
@@ -379,9 +379,10 @@ export class TemplateEngine {
               const itemRegex = new RegExp(`\\{\\{${escapedKey}\\}\\}`, 'g')
 
               if (typeof value === 'string') {
+                const substituted = key === 'section_quote' ? this.formatAsBlockquote(value) : value
                 // Multi-line case: preserve indentation for substitution
                 itemContent = itemContent.replace(itemRegex, (match: string, offset: number) => {
-                  return this.preserveIndent(itemContent, offset, value)
+                  return this.preserveIndent(itemContent, offset, substituted)
                 })
               } else {
                 itemContent = itemContent.replace(itemRegex, String(value))
@@ -530,7 +531,7 @@ export class TemplateEngine {
         file_name: fileName,
         file_name_with_line: fileNameWithLine,
         section_summary: summary,
-        section_quote: this.formatAsBlockquote(quote),
+        section_quote: quote,
         file_uri: fileUri,
         start_line: quoteStartLine,
         end_line: quoteEndLine,
@@ -604,7 +605,7 @@ export class TemplateEngine {
         sectionContent = sectionContent.replace(/\{\{file_uri\}\}/g, section.file_uri)
         // Also support new format variables
         sectionContent = sectionContent.replace(/\{\{section_summary\}\}/g, section.section_summary || section.content)
-        sectionContent = sectionContent.replace(/\{\{section_quote\}\}/g, section.section_quote || '')
+        sectionContent = sectionContent.replace(/\{\{section_quote\}\}/g, this.formatAsBlockquote(section.section_quote || ''))
 
         // Citation processing
         const quotesPattern = /\{\{#quotes\}\}([\s\S]*?)\{\{\/quotes\}\}/g
