@@ -112,6 +112,11 @@ EMBEDDING_MODEL=nomic-embed-text
 Add this MCP server to Claude Code:
 
 ```bash
+# グローバルに追加（全プロジェクトで使用可能）
+claude mcp add -s user local-knowledge-rag -- node /path/to/local-knowledge-rag-mcp/dist/mcp-server.js
+
+# 特定のプロジェクトに追加
+cd /path/to/your/project
 claude mcp add local-knowledge-rag -- node /path/to/local-knowledge-rag-mcp/dist/mcp-server.js
 ```
 
