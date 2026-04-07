@@ -636,6 +636,10 @@ export class VectorManager {
         })
       }
       readCount++
+      // Yield to event loop periodically so the HTTP server stays responsive
+      if (readCount % 20 === 0) {
+        await new Promise<void>(resolve => setImmediate(resolve))
+      }
       if (readCount % logInterval === 0) {
         const pct = Math.floor((readCount / files.length) * 100)
         console.error(`[prepareContentChunks] Read ${readCount}/${files.length} files (${pct}%) - ${fileContents.length} valid, ${skippedFiles.length} skipped, ${failedFiles.length} failed`)

@@ -127,6 +127,12 @@ export class TextChunker {
         console.error(`Failed to create chunks for ${sanitizePathGeneric(file.path)}:`, error)
         // Continue with other files even if one fails
       }
+
+      // Yield to the event loop every 20 files so the HTTP server stays responsive
+      if ((i + 1) % 20 === 0) {
+        await new Promise<void>(resolve => setImmediate(resolve))
+      }
+
       if ((i + 1) % logInterval === 0) {
         const pct = Math.floor(((i + 1) / files.length) * 100)
         console.error(`[createChunksForFiles] ${i + 1}/${files.length} files (${pct}%), ${allChunks.length} chunks so far`)
