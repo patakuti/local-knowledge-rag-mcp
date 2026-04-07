@@ -112,17 +112,25 @@ export class TextChunker {
    * Create chunks for multiple files
    */
   async createChunksForFiles(
-    files: Array<{ path: string; content: string; mtime: number }>
+    files: Array<{ path: string; content: string; mtime: number }>,
+    onProgress?: (completedFiles: number, totalFiles: number, totalChunks: number) => void
   ): Promise<ContentChunk[]> {
     const allChunks: ContentChunk[] = []
+    const logInterval = Math.max(1, Math.floor(files.length / 10))
 
-    for (const file of files) {
+    for (let i = 0; i < files.length; i++) {
+      const file = files[i]
       try {
         const chunks = await this.createChunks(file.content, file.path, file.mtime)
         allChunks.push(...chunks)
       } catch (error) {
         console.error(`Failed to create chunks for ${sanitizePathGeneric(file.path)}:`, error)
         // Continue with other files even if one fails
+      }
+      if ((i + 1) % logInterval === 0) {
+        const pct = Math.floor(((i + 1) / files.length) * 100)
+        console.error(`[createChunksForFiles] ${i + 1}/${files.length} files (${pct}%), ${allChunks.length} chunks so far`)
+        onProgress?.(i + 1, files.length, allChunks.length)
       }
     }
 

@@ -659,7 +659,19 @@ export class VectorManager {
       completedFiles: files.length,
       message: `Creating chunks for ${fileContents.length} files...`,
     })
-    const contentChunks = await this.textChunker.createChunksForFiles(fileContents)
+    const contentChunks = await this.textChunker.createChunksForFiles(
+      fileContents,
+      async (completedFiles, totalFiles, totalChunks) => {
+        const pct = Math.floor((completedFiles / totalFiles) * 100)
+        await this.progressLogger.logProgress({
+          completedChunks: 0,
+          totalChunks: 0,
+          totalFiles: files.length,
+          completedFiles: files.length,
+          message: `Creating chunks: ${completedFiles}/${totalFiles} files (${pct}%), ${totalChunks} chunks`,
+        })
+      }
+    )
     console.error(`[prepareContentChunks] Created ${contentChunks.length} chunks, processing...`)
     const validChunks = this.textChunker.processChunks(contentChunks)
     console.error(`[prepareContentChunks] ${validChunks.length} valid chunks after processing`)
