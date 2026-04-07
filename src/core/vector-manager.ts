@@ -200,22 +200,30 @@ export class VectorManager {
     const startTime = Date.now()
     let filesToIndex: FileInfo[]
 
+    console.error(`[updateVaultIndex] Starting ${options.reindexAll ? 'full' : 'incremental'} index update`)
+
     try {
       if (options.reindexAll) {
         // Full reindex: get all files and clear existing vectors
+        console.error('[updateVaultIndex] Scanning files for full reindex...')
         filesToIndex = await this.fileUtils.getFilesToIndex({
           includePatterns: options.includePatterns,
           excludePatterns: options.excludePatterns,
         })
+        console.error(`[updateVaultIndex] Found ${filesToIndex.length} files to index`)
         if (cancellationController?.isCancelled) {
           await this.progressLogger.logCancelled(0, 0, 0, 0)
           updateProgress?.({ completedChunks: 0, totalChunks: 0, totalFiles: 0, isCancelled: true })
           return
         }
+        console.error('[updateVaultIndex] Clearing all existing vectors...')
         await this.repository.clearAllVectors(this.workspaceId, embeddingModel)
+        console.error('[updateVaultIndex] Cleared all existing vectors')
       } else {
         // Incremental update: clean up deleted files first
+        console.error('[updateVaultIndex] Deleting vectors for removed files...')
         await this.deleteVectorsForDeletedFiles(embeddingModel, options)
+        console.error('[updateVaultIndex] Deleted vectors for removed files')
 
         if (cancellationController?.isCancelled) {
           await this.progressLogger.logCancelled(0, 0, 0, 0)
@@ -224,11 +232,13 @@ export class VectorManager {
         }
 
         // Get files that need indexing (new or modified)
+        console.error('[updateVaultIndex] Scanning files for incremental update...')
         filesToIndex = await this.getFilesToIndex({
           embeddingModel,
           includePatterns: options.includePatterns,
           excludePatterns: options.excludePatterns,
         })
+        console.error(`[updateVaultIndex] Found ${filesToIndex.length} files to index`)
 
         if (cancellationController?.isCancelled) {
           await this.progressLogger.logCancelled(0, 0, 0, 0)
@@ -238,15 +248,18 @@ export class VectorManager {
 
         // Remove existing vectors for files that will be reindexed
         if (filesToIndex.length > 0) {
+          console.error(`[updateVaultIndex] Removing existing vectors for ${filesToIndex.length} files...`)
           await this.repository.deleteVectorsForMultipleFiles(
             this.workspaceId,
             filesToIndex.map(file => file.path),
             embeddingModel,
           )
+          console.error('[updateVaultIndex] Removed existing vectors')
         }
       }
 
       if (filesToIndex.length === 0) {
+        console.error('[updateVaultIndex] No files to index, completing early')
         const durationSeconds = (Date.now() - startTime) / 1000
         await this.progressLogger.logComplete(0, 0, durationSeconds)
         updateProgress?.({
@@ -258,7 +271,9 @@ export class VectorManager {
       }
 
       // Read and chunk files
+      console.error(`[updateVaultIndex] Preparing content chunks for ${filesToIndex.length} files...`)
       const { contentChunks, failedFiles, skippedFiles } = await this.prepareContentChunks(filesToIndex)
+      console.error(`[updateVaultIndex] Prepared ${contentChunks.length} chunks (${failedFiles.length} failed, ${skippedFiles.length} skipped)`)
 
       // Check for cancellation after preparing chunks
       if (cancellationController?.isCancelled) {
@@ -328,6 +343,7 @@ export class VectorManager {
       }
 
       // Log start
+      console.error(`[updateVaultIndex] Starting embedding generation for ${contentChunks.length} chunks from ${filesToIndex.length} files`)
       await this.progressLogger.logStart(contentChunks.length, filesToIndex.length)
 
       updateProgress?.({
@@ -343,13 +359,19 @@ export class VectorManager {
       const shouldManageIndex = contentChunks.length >= BULK_INSERT_THRESHOLD
       let droppedIndex = false
 
-      if (shouldManageIndex && await this.hasVectorIndex()) {
-        await this.dropVectorIndex()
-        droppedIndex = true
+      if (shouldManageIndex) {
+        console.error(`[updateVaultIndex] Checking HNSW index for bulk insert (${contentChunks.length} chunks >= ${BULK_INSERT_THRESHOLD} threshold)...`)
+        if (await this.hasVectorIndex()) {
+          await this.dropVectorIndex()
+          droppedIndex = true
+        } else {
+          console.error('[updateVaultIndex] No HNSW index to drop')
+        }
       }
 
       try {
         // Generate embeddings and save to database
+        console.error('[updateVaultIndex] Starting processEmbeddings...')
         const result = await this.processEmbeddings(
           contentChunks,
           embeddingModel,
@@ -357,22 +379,25 @@ export class VectorManager {
           updateProgress,
           cancellationController
         )
+        console.error(`[updateVaultIndex] processEmbeddings completed (wasCancelled: ${result.wasCancelled})`)
 
         // Log completion only if not cancelled
         if (!result.wasCancelled) {
           const durationSeconds = (Date.now() - startTime) / 1000
+          console.error(`[updateVaultIndex] Index update completed in ${durationSeconds.toFixed(1)}s`)
           await this.progressLogger.logComplete(contentChunks.length, filesToIndex.length, durationSeconds)
         }
       } finally {
         // Always recreate the HNSW index if we dropped it
         if (droppedIndex) {
-          console.error('Recreating HNSW vector index after bulk insert...')
+          console.error('[updateVaultIndex] Recreating HNSW vector index after bulk insert...')
           await this.createVectorIndex(embeddingModel.dimension)
         }
       }
     } catch (error) {
       // Log error
       const errorMessage = error instanceof Error ? error.message : String(error)
+      console.error(`[updateVaultIndex] Error: ${errorMessage}`)
       await this.progressLogger.logError(errorMessage)
       throw error
     }
@@ -489,21 +514,30 @@ export class VectorManager {
     excludePatterns: string[]
   }): Promise<FileInfo[]> {
     // Get all files matching patterns
+    console.error('[getFilesToIndex] Scanning filesystem for matching files...')
     const allFiles = await this.fileUtils.getFilesToIndex({
       includePatterns: options.includePatterns,
       excludePatterns: options.excludePatterns,
     })
+    console.error(`[getFilesToIndex] Found ${allFiles.length} files matching patterns`)
 
     // Get currently indexed files with their modification times
+    console.error('[getFilesToIndex] Querying indexed file paths from database...')
     const indexedFilePaths = await this.repository.getIndexedFilePaths(this.workspaceId, options.embeddingModel)
+    console.error(`[getFilesToIndex] Found ${indexedFilePaths.length} indexed files in database`)
+
+    console.error('[getFilesToIndex] Querying file modification times...')
     const indexedMtimes = await this.repository.getFileModificationTimes(
       this.workspaceId,
       indexedFilePaths,
       options.embeddingModel
     )
+    console.error(`[getFilesToIndex] Got ${indexedMtimes.size} modification times`)
 
     // Filter to files that need reindexing
-    return this.fileUtils.getFilesToReindex(allFiles, indexedMtimes)
+    const filesToReindex = await this.fileUtils.getFilesToReindex(allFiles, indexedMtimes)
+    console.error(`[getFilesToIndex] ${filesToReindex.length} files need (re)indexing`)
+    return filesToReindex
   }
 
   /**
@@ -516,19 +550,28 @@ export class VectorManager {
       excludePatterns: string[]
     }
   ): Promise<void> {
+    console.error('[deleteVectorsForDeletedFiles] Querying indexed file paths...')
     const indexedFilePaths = await this.repository.getIndexedFilePaths(this.workspaceId, embeddingModel)
+    console.error(`[deleteVectorsForDeletedFiles] Found ${indexedFilePaths.length} indexed files`)
+
+    console.error('[deleteVectorsForDeletedFiles] Filtering existing files...')
     const existingFilePaths = await this.fileUtils.filterExistingFiles(indexedFilePaths)
+    console.error(`[deleteVectorsForDeletedFiles] ${existingFilePaths.length} of ${indexedFilePaths.length} indexed files still exist`)
 
     // Also check if files still match the include/exclude patterns
+    console.error('[deleteVectorsForDeletedFiles] Scanning current files matching patterns...')
     const currentFiles = await this.fileUtils.getFilesToIndex({
       includePatterns: options.includePatterns,
       excludePatterns: options.excludePatterns,
     })
     const currentFilePaths = new Set(currentFiles.map(f => f.path))
+    console.error(`[deleteVectorsForDeletedFiles] ${currentFilePaths.size} current files match patterns`)
 
     const validFilePaths = existingFilePaths.filter(path => currentFilePaths.has(path))
+    console.error(`[deleteVectorsForDeletedFiles] ${validFilePaths.length} valid files, deleting vectors for removed files...`)
 
     await this.repository.deleteVectorsForDeletedFiles(this.workspaceId, validFilePaths, embeddingModel)
+    console.error('[deleteVectorsForDeletedFiles] Done')
   }
 
   /**
