@@ -142,6 +142,7 @@ export type IndexProgress = {
   completedFiles?: number
   waitingForRateLimit?: boolean
   isCancelled?: boolean
+  message?: string
 }
 
 export type CancellationController = {

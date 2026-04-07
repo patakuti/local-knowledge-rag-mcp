@@ -1155,6 +1155,8 @@ export class ProgressServer {
         statusIcon.innerHTML = '<div class="spinner"></div>';
         if (data.waitingForRateLimit) {
           statusText.textContent = 'Updating (⏳ Waiting for API rate limit...)';
+        } else if (data.message && data.totalChunks === 0) {
+          statusText.textContent = data.message;
         } else {
           statusText.textContent = 'Updating';
         }

@@ -588,7 +588,16 @@ export class VectorManager {
 
     // Read all files
     console.error(`[prepareContentChunks] Reading ${files.length} files...`)
+    await this.progressLogger.logProgress({
+      completedChunks: 0,
+      totalChunks: 0,
+      totalFiles: files.length,
+      completedFiles: 0,
+      message: `Reading ${files.length} files...`,
+    })
+
     let readCount = 0
+    const logInterval = Math.max(1, Math.floor(files.length / 10))
     for (const file of files) {
       try {
         let content = await this.fileUtils.readFileContent(file.path)
@@ -627,14 +636,29 @@ export class VectorManager {
         })
       }
       readCount++
-      if (readCount % 500 === 0) {
-        console.error(`[prepareContentChunks] Read ${readCount}/${files.length} files (${fileContents.length} valid, ${skippedFiles.length} skipped, ${failedFiles.length} failed)`)
+      if (readCount % logInterval === 0) {
+        const pct = Math.floor((readCount / files.length) * 100)
+        console.error(`[prepareContentChunks] Read ${readCount}/${files.length} files (${pct}%) - ${fileContents.length} valid, ${skippedFiles.length} skipped, ${failedFiles.length} failed`)
+        await this.progressLogger.logProgress({
+          completedChunks: 0,
+          totalChunks: 0,
+          totalFiles: files.length,
+          completedFiles: readCount,
+          message: `Reading files: ${readCount}/${files.length} (${pct}%)`,
+        })
       }
     }
     console.error(`[prepareContentChunks] File reading complete: ${fileContents.length} valid, ${skippedFiles.length} skipped, ${failedFiles.length} failed`)
 
     // Create chunks for all files
     console.error(`[prepareContentChunks] Creating chunks for ${fileContents.length} files...`)
+    await this.progressLogger.logProgress({
+      completedChunks: 0,
+      totalChunks: 0,
+      totalFiles: files.length,
+      completedFiles: files.length,
+      message: `Creating chunks for ${fileContents.length} files...`,
+    })
     const contentChunks = await this.textChunker.createChunksForFiles(fileContents)
     console.error(`[prepareContentChunks] Created ${contentChunks.length} chunks, processing...`)
     const validChunks = this.textChunker.processChunks(contentChunks)
