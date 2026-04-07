@@ -13,6 +13,7 @@ export class ProgressServer {
   private cancelIndexingFn?: () => void
   private listTemplatesFn?: () => Promise<any>
   private indexingInProgress: boolean = false
+  private indexingPromise: Promise<void> | null = null
   // Connection monitoring
   private activeConnections: Set<net.Socket> = new Set()
   private connectionCallbacks: Array<() => void> = []
@@ -92,6 +93,16 @@ export class ProgressServer {
 
   setListTemplatesHandler(listTemplates: () => Promise<any>) {
     this.listTemplatesFn = listTemplates
+  }
+
+  isIndexingActive(): boolean {
+    return this.indexingInProgress
+  }
+
+  async waitForIndexingComplete(): Promise<void> {
+    if (this.indexingPromise) {
+      await this.indexingPromise
+    }
   }
 
   async start(): Promise<void> {
@@ -227,7 +238,7 @@ export class ProgressServer {
 
               // Run the rebuild in the background
               console.error('[ProgressServer RebuildIndexHandler] Rebuild index called with reindexAll:', reindexAll)
-              this.rebuildIndexFn!(reindexAll)
+              this.indexingPromise = this.rebuildIndexFn!(reindexAll)
                 .then((mcpResult) => {
                   console.error('[ProgressServer RebuildIndexHandler] Rebuild index completed, isError:', mcpResult.isError)
                 })
@@ -236,6 +247,7 @@ export class ProgressServer {
                 })
                 .finally(() => {
                   this.indexingInProgress = false
+                  this.indexingPromise = null
                 })
             } catch (error) {
               console.error('[ProgressServer] Error parsing rebuild-index request:', error)
