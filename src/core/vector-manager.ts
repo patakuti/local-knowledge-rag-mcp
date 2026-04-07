@@ -587,6 +587,8 @@ export class VectorManager {
     const fileContents: Array<{ path: string; content: string; mtime: number }> = []
 
     // Read all files
+    console.error(`[prepareContentChunks] Reading ${files.length} files...`)
+    let readCount = 0
     for (const file of files) {
       try {
         let content = await this.fileUtils.readFileContent(file.path)
@@ -624,11 +626,19 @@ export class VectorManager {
           size: file.stat.size,
         })
       }
+      readCount++
+      if (readCount % 500 === 0) {
+        console.error(`[prepareContentChunks] Read ${readCount}/${files.length} files (${fileContents.length} valid, ${skippedFiles.length} skipped, ${failedFiles.length} failed)`)
+      }
     }
+    console.error(`[prepareContentChunks] File reading complete: ${fileContents.length} valid, ${skippedFiles.length} skipped, ${failedFiles.length} failed`)
 
     // Create chunks for all files
+    console.error(`[prepareContentChunks] Creating chunks for ${fileContents.length} files...`)
     const contentChunks = await this.textChunker.createChunksForFiles(fileContents)
+    console.error(`[prepareContentChunks] Created ${contentChunks.length} chunks, processing...`)
     const validChunks = this.textChunker.processChunks(contentChunks)
+    console.error(`[prepareContentChunks] ${validChunks.length} valid chunks after processing`)
 
     return { contentChunks: validChunks, failedFiles, skippedFiles }
   }
