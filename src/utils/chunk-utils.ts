@@ -144,13 +144,19 @@ export class TextChunker {
 
     for (let i = 0; i < files.length; i++) {
       const file = files[i]
+      const fileSizeKB = (file.content.length / 1024).toFixed(0)
+
+      // Log before processing large files (>50KB) so we can see which file is being processed
+      if (file.content.length >= 50 * 1024) {
+        console.error(`[createChunksForFiles] Processing large file: ${sanitizePathGeneric(file.path)} (${fileSizeKB}KB)...`)
+      }
+
       try {
-        const chunksBefore = allChunks.length
         const chunks = await this.createChunks(file.content, file.path, file.mtime)
         allChunks.push(...chunks)
-        // Log files that produce many chunks (likely large files)
+        // Log after processing files that produced many chunks
         if (chunks.length >= 100) {
-          console.error(`[createChunksForFiles] Large file: ${sanitizePathGeneric(file.path)} → ${chunks.length} chunks (${(file.content.length / 1024).toFixed(0)}KB)`)
+          console.error(`[createChunksForFiles] Large file done: ${sanitizePathGeneric(file.path)} → ${chunks.length} chunks (${fileSizeKB}KB)`)
         }
       } catch (error) {
         console.error(`Failed to create chunks for ${sanitizePathGeneric(file.path)}:`, error)

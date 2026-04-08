@@ -166,6 +166,7 @@ export class VectorManager {
     options: {
       includePatterns: string[]
       excludePatterns: string[]
+      maxFileSizeKB?: number
       reindexAll?: boolean
     },
     updateProgress?: (indexProgress: IndexProgress) => void,
@@ -192,6 +193,7 @@ export class VectorManager {
     options: {
       includePatterns: string[]
       excludePatterns: string[]
+      maxFileSizeKB?: number
       reindexAll?: boolean
     },
     updateProgress?: (indexProgress: IndexProgress) => void,
@@ -271,8 +273,9 @@ export class VectorManager {
       }
 
       // Read and chunk files
-      console.error(`[updateVaultIndex] Preparing content chunks for ${filesToIndex.length} files...`)
-      const { contentChunks, failedFiles, skippedFiles } = await this.prepareContentChunks(filesToIndex)
+      const maxFileSizeKB = options.maxFileSizeKB || 512
+      console.error(`[updateVaultIndex] Preparing content chunks for ${filesToIndex.length} files (maxFileSizeKB: ${maxFileSizeKB})...`)
+      const { contentChunks, failedFiles, skippedFiles } = await this.prepareContentChunks(filesToIndex, maxFileSizeKB)
       console.error(`[updateVaultIndex] Prepared ${contentChunks.length} chunks (${failedFiles.length} failed, ${skippedFiles.length} skipped)`)
 
       // Check for cancellation after preparing chunks
@@ -577,7 +580,7 @@ export class VectorManager {
   /**
    * Read files and create content chunks
    */
-  private async prepareContentChunks(files: FileInfo[]): Promise<{
+  private async prepareContentChunks(files: FileInfo[], maxFileSizeKB: number = 512): Promise<{
     contentChunks: ContentChunk[]
     failedFiles: Array<{ path: string; error: string; size?: number }>
     skippedFiles: Array<{ path: string; reason: string; size: number }>
@@ -585,9 +588,10 @@ export class VectorManager {
     const failedFiles: Array<{ path: string; error: string; size?: number }> = []
     const skippedFiles: Array<{ path: string; reason: string; size: number }> = []
     const fileContents: Array<{ path: string; content: string; mtime: number }> = []
+    const maxFileSizeBytes = maxFileSizeKB * 1024
 
     // Read all files
-    console.error(`[prepareContentChunks] Reading ${files.length} files...`)
+    console.error(`[prepareContentChunks] Reading ${files.length} files (max ${maxFileSizeKB}KB)...`)
     await this.progressLogger.logProgress({
       completedChunks: 0,
       totalChunks: 0,
@@ -599,6 +603,20 @@ export class VectorManager {
     let readCount = 0
     const logInterval = Math.max(1, Math.floor(files.length / 10))
     for (const file of files) {
+      // Skip files exceeding the max size limit
+      if (file.stat.size > maxFileSizeBytes) {
+        const sizeKB = (file.stat.size / 1024).toFixed(0)
+        const reason = `File too large (${sizeKB}KB > ${maxFileSizeKB}KB limit)`
+        console.error(`[prepareContentChunks] Skipping: ${sanitizePath(file.path, this.workspacePath)} - ${reason}`)
+        skippedFiles.push({
+          path: file.path,
+          reason,
+          size: file.stat.size
+        })
+        readCount++
+        continue
+      }
+
       try {
         let content = await this.fileUtils.readFileContent(file.path)
 

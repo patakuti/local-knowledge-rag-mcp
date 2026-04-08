@@ -241,6 +241,23 @@ File patterns to exclude from indexing (comma-separated glob patterns).
 RAG_EXCLUDE_PATTERNS="**/node_modules/**,**/.git/**,**/dist/**"
 ```
 
+**`RAG_MAX_FILE_SIZE_KB`**
+
+Maximum file size (in KB) to include in indexing. Files larger than this limit are skipped. Default: `512`
+
+```bash
+RAG_MAX_FILE_SIZE_KB=512
+```
+
+**Examples:**
+```bash
+# Allow larger files (1MB)
+RAG_MAX_FILE_SIZE_KB=1024
+
+# Restrict to smaller files only (256KB)
+RAG_MAX_FILE_SIZE_KB=256
+```
+
 ---
 
 ### Report Settings

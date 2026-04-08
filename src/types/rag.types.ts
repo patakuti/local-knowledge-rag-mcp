@@ -73,7 +73,8 @@ export type ReportConfig = z.infer<typeof reportConfigSchema>
 
 export const indexingConfigSchema = z.object({
   includePatterns: z.array(z.string()).default(['*.md', '*.txt', '*.js', '*.ts', '*.py']),
-  excludePatterns: z.array(z.string()).default(['node_modules/**', '.git/**', '*.min.*'])
+  excludePatterns: z.array(z.string()).default(['node_modules/**', '.git/**', '*.min.*']),
+  maxFileSizeKB: z.number().int().positive().default(512),
 })
 
 export type IndexingConfig = z.infer<typeof indexingConfigSchema>
