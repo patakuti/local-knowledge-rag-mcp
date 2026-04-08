@@ -79,12 +79,12 @@
           },
           "quote_start": {
             "type": "string",
-            "description": "First ~30 characters copied verbatim from the chunk content for automatic line number resolution. When provided with quote_end, line_range is auto-calculated.",
+            "description": "First ~30 characters copied verbatim from the CITED PORTION (not the entire chunk) for automatic line number resolution. When provided with quote_end, line_range is auto-calculated. The cited portion is the specific lines you are referencing in your text, not the whole chunk.",
             "required": false
           },
           "quote_end": {
             "type": "string",
-            "description": "Last ~30 characters copied verbatim from the chunk content for automatic line number resolution. When provided with quote_start, line_range is auto-calculated.",
+            "description": "Last ~30 characters copied verbatim from the CITED PORTION (not the entire chunk) for automatic line number resolution. When provided with quote_start, line_range is auto-calculated. The cited portion is the specific lines you are referencing in your text, not the whole chunk.",
             "required": false
           },
           "result_id": {

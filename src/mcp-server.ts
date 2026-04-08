@@ -1081,6 +1081,14 @@ class SmartComposerRAGServer {
         // Fallback: if line_range is still missing, use chunk's line range from result_id
         if (!item.line_range && hintStartLine !== undefined && hintEndLine !== undefined) {
           item.line_range = `${hintStartLine}-${hintEndLine}`
+          // Update file_uri anchor to match line_range
+          if (item.file_uri && typeof item.file_uri === 'string') {
+            const hashIndex = item.file_uri.indexOf('#')
+            const baseUri = hashIndex !== -1 ? item.file_uri.substring(0, hashIndex) : item.file_uri
+            item.file_uri = hintStartLine !== hintEndLine
+              ? `${baseUri}#L${hintStartLine}-L${hintEndLine}`
+              : `${baseUri}#L${hintStartLine}`
+          }
           console.error(`[resolveQuoteLineNumbers] Fallback to chunk line range: ${item.line_range}`)
         }
 
