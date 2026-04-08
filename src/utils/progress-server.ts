@@ -13,6 +13,7 @@ export class ProgressServer {
   private cancelIndexingFn?: () => void
   private listTemplatesFn?: () => Promise<any>
   private indexingInProgress: boolean = false
+  private indexingPromise: Promise<void> | null = null
   // Connection monitoring
   private activeConnections: Set<net.Socket> = new Set()
   private connectionCallbacks: Array<() => void> = []
@@ -92,6 +93,16 @@ export class ProgressServer {
 
   setListTemplatesHandler(listTemplates: () => Promise<any>) {
     this.listTemplatesFn = listTemplates
+  }
+
+  isIndexingActive(): boolean {
+    return this.indexingInProgress
+  }
+
+  async waitForIndexingComplete(): Promise<void> {
+    if (this.indexingPromise) {
+      await this.indexingPromise
+    }
   }
 
   async start(): Promise<void> {
@@ -227,7 +238,7 @@ export class ProgressServer {
 
               // Run the rebuild in the background
               console.error('[ProgressServer RebuildIndexHandler] Rebuild index called with reindexAll:', reindexAll)
-              this.rebuildIndexFn!(reindexAll)
+              this.indexingPromise = this.rebuildIndexFn!(reindexAll)
                 .then((mcpResult) => {
                   console.error('[ProgressServer RebuildIndexHandler] Rebuild index completed, isError:', mcpResult.isError)
                 })
@@ -236,6 +247,7 @@ export class ProgressServer {
                 })
                 .finally(() => {
                   this.indexingInProgress = false
+                  this.indexingPromise = null
                 })
             } catch (error) {
               console.error('[ProgressServer] Error parsing rebuild-index request:', error)
@@ -483,6 +495,39 @@ export class ProgressServer {
     .reload-button:disabled {
       opacity: 0.5;
       cursor: not-allowed;
+    }
+    .warnings-container {
+      margin-top: 30px;
+      background: #fff3cd;
+      border: 2px solid #ffc107;
+      border-radius: 10px;
+      padding: 15px 20px;
+    }
+    .warnings-header {
+      font-size: 16px;
+      font-weight: 600;
+      color: #856404;
+      margin-bottom: 10px;
+    }
+    .warnings-body {
+      font-size: 13px;
+      color: #664d03;
+      line-height: 1.6;
+    }
+    .warnings-body .warning-item {
+      padding: 4px 0;
+      border-bottom: 1px solid rgba(133, 100, 4, 0.15);
+    }
+    .warnings-body .warning-item:last-child {
+      border-bottom: none;
+    }
+    .warnings-body .warning-path {
+      font-weight: 600;
+      word-break: break-all;
+    }
+    .warnings-body .warning-reason {
+      color: #856404;
+      opacity: 0.8;
     }
     .log-container {
       margin-top: 40px;
@@ -814,6 +859,11 @@ export class ProgressServer {
           </button>
         </div>
       </div>
+    </div>
+
+    <div id="warnings-container" class="warnings-container" style="display: none;">
+      <div class="warnings-header">⚠️ Skipped Files</div>
+      <div class="warnings-body" id="warnings-body"></div>
     </div>
 
     <div class="log-container">
@@ -1155,6 +1205,8 @@ export class ProgressServer {
         statusIcon.innerHTML = '<div class="spinner"></div>';
         if (data.waitingForRateLimit) {
           statusText.textContent = 'Updating (⏳ Waiting for API rate limit...)';
+        } else if (data.message && data.totalChunks === 0) {
+          statusText.textContent = data.message;
         } else {
           statusText.textContent = 'Updating';
         }
@@ -1215,6 +1267,43 @@ export class ProgressServer {
 
       // Scroll to bottom
       logContainer.scrollTop = logContainer.scrollHeight;
+
+      // Collect warning entries and display skipped files
+      updateWarnings(entries);
+    }
+
+    function updateWarnings(entries) {
+      const container = document.getElementById('warnings-container');
+      const body = document.getElementById('warnings-body');
+      const warningEntries = entries.filter(e => e.type === 'warning' && e.data.details);
+
+      // Collect all skipped files from warning entries
+      const skippedFiles = [];
+      warningEntries.forEach(entry => {
+        const details = entry.data.details;
+        if (details && details.skipped) {
+          details.skipped.forEach(function(f) { skippedFiles.push(f); });
+        }
+        if (details && details.skippedFiles) {
+          details.skippedFiles.forEach(function(f) { skippedFiles.push(f); });
+        }
+      });
+
+      if (skippedFiles.length === 0) {
+        container.style.display = 'none';
+        return;
+      }
+
+      container.style.display = 'block';
+      body.innerHTML = skippedFiles.map(function(f) {
+        var path = f.path || 'unknown';
+        var reason = f.reason || f.error || 'unknown reason';
+        var sizeInfo = f.size ? ' (' + (f.size / 1024).toFixed(0) + 'KB)' : '';
+        return '<div class="warning-item">' +
+          '<span class="warning-path">' + path + '</span>' + sizeInfo +
+          '<br><span class="warning-reason">' + reason + '</span>' +
+          '</div>';
+      }).join('');
     }
 
     // Start progress polling (dynamic interval: 5s base, 2s when indexing)

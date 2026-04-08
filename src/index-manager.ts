@@ -160,22 +160,43 @@ async function main() {
   console.error(`[Index Manager] Started at http://localhost:${actualPort}`)
 
   // Cleanup
-  const cleanup = () => {
-    console.error('[Index Manager] Shutting down...')
-    registry.unregister(workspaceId)
-    progressServer.stop().then(() => {
-      ragEngine.cleanup().then(() => {
-        console.error('[Index Manager] Cleanup complete')
-        process.exit(0)
-      })
+  let cleanupInProgress = false
+  const cleanup = (reason: string) => {
+    if (cleanupInProgress) {
+      console.error(`[Index Manager] Cleanup already in progress, ignoring (reason: ${reason})`)
+      return
+    }
+    cleanupInProgress = true
+    console.error(`[Index Manager] Shutting down (reason: ${reason})...`)
+
+    const doCleanup = async () => {
+      // If indexing is in progress, cancel it and wait for completion
+      if (progressServer.isIndexingActive()) {
+        console.error('[Index Manager] Indexing is in progress, cancelling before shutdown...')
+        indexCancellationController.cancel()
+        console.error('[Index Manager] Waiting for indexing to complete...')
+        await progressServer.waitForIndexingComplete()
+        console.error('[Index Manager] Indexing stopped')
+      }
+
+      registry.unregister(workspaceId)
+      await progressServer.stop()
+      await ragEngine.cleanup()
+      console.error('[Index Manager] Cleanup complete')
+      process.exit(0)
+    }
+
+    doCleanup().catch((error) => {
+      console.error('[Index Manager] Error during cleanup:', error)
+      process.exit(1)
     })
   }
 
-  process.on('SIGTERM', cleanup)
-  process.on('SIGINT', cleanup)
+  process.on('SIGTERM', () => cleanup('SIGTERM'))
+  process.on('SIGINT', () => cleanup('SIGINT'))
 
   // Monitor idle timeout
-  setupIdleTimeout(progressServer, cleanup)
+  setupIdleTimeout(progressServer, () => cleanup('idle timeout'))
 }
 
 function setupIdleTimeout(

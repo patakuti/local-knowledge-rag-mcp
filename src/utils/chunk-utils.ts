@@ -27,6 +27,11 @@ export class TextChunker {
     try {
       const documents = await this.splitter.createDocuments([content])
 
+      // Build a line offset lookup table once: lineOffsets[i] = character offset
+      // where line (i+1) starts. This allows O(log n) line number lookups
+      // instead of the previous O(n) per-chunk scan.
+      const lineOffsets = this.buildLineOffsets(content)
+
       // Track search position to handle duplicate chunk text correctly
       // (chunks are returned in document order)
       let searchFrom = 0
@@ -34,7 +39,7 @@ export class TextChunker {
       return documents.map((doc): ContentChunk => {
         const chunkContent = doc.pageContent
         const { startLine, endLine, nextSearchFrom } =
-          this.calculateLineNumbers(content, chunkContent, searchFrom)
+          this.calculateLineNumbers(content, chunkContent, searchFrom, lineOffsets)
         searchFrom = nextSearchFrom
 
         const metadata: VectorMetaData = {
@@ -66,63 +71,93 @@ export class TextChunker {
   }
 
   /**
+   * Build a sorted array of character offsets where each line starts.
+   * lineOffsets[0] = 0 (line 1 starts at offset 0).
+   * Used for O(log n) binary search in getLineAtOffset.
+   */
+  private buildLineOffsets(content: string): number[] {
+    const offsets = [0]
+    for (let i = 0; i < content.length; i++) {
+      if (content[i] === '\n') {
+        offsets.push(i + 1)
+      }
+    }
+    return offsets
+  }
+
+  /**
+   * Get the 1-based line number for a character offset using binary search.
+   */
+  private getLineAtOffset(offset: number, lineOffsets: number[]): number {
+    let lo = 0
+    let hi = lineOffsets.length - 1
+    while (lo <= hi) {
+      const mid = (lo + hi) >>> 1
+      if (lineOffsets[mid] <= offset) {
+        lo = mid + 1
+      } else {
+        hi = mid - 1
+      }
+    }
+    return lo // 1-based line number
+  }
+
+  /**
    * Calculate line numbers using character offset matching.
    * Finds the chunk in the original content by character position,
-   * then counts newlines to derive line numbers.
+   * then uses the precomputed line offset table for O(log n) lookup.
    */
   private calculateLineNumbers(
     originalContent: string,
     chunkContent: string,
-    searchFrom: number
+    searchFrom: number,
+    lineOffsets: number[]
   ): { startLine: number; endLine: number; nextSearchFrom: number } {
     // Trim leading/trailing whitespace from chunk for matching,
     // since keepSeparator can prepend separators to chunks
     const trimmed = chunkContent.trim()
-    const offset = originalContent.indexOf(trimmed, searchFrom)
+    let offset = originalContent.indexOf(trimmed, searchFrom)
 
     if (offset === -1) {
       // Fallback: search from the beginning
-      const fallbackOffset = originalContent.indexOf(trimmed)
-      if (fallbackOffset === -1) {
-        const totalLines = originalContent.split('\n').length
-        return { startLine: 1, endLine: totalLines, nextSearchFrom: searchFrom }
+      offset = originalContent.indexOf(trimmed)
+      if (offset === -1) {
+        return { startLine: 1, endLine: lineOffsets.length, nextSearchFrom: searchFrom }
       }
-      const startLine = this.countNewlines(originalContent, 0, fallbackOffset) + 1
-      const endLine = startLine + this.countNewlines(trimmed, 0, trimmed.length)
-      return { startLine, endLine, nextSearchFrom: fallbackOffset + trimmed.length }
     }
 
-    const startLine = this.countNewlines(originalContent, 0, offset) + 1
-    const endLine = startLine + this.countNewlines(trimmed, 0, trimmed.length)
+    const startLine = this.getLineAtOffset(offset, lineOffsets)
+    const endOffset = offset + trimmed.length
+    const endLine = this.getLineAtOffset(endOffset > 0 ? endOffset - 1 : 0, lineOffsets)
     return { startLine, endLine, nextSearchFrom: offset + trimmed.length }
-  }
-
-  /**
-   * Count newline characters in a string between two positions.
-   */
-  private countNewlines(text: string, from: number, to: number): number {
-    let count = 0
-    for (let i = from; i < to; i++) {
-      if (text[i] === '\n') count++
-    }
-    return count
   }
 
   /**
    * Create chunks for multiple files
    */
   async createChunksForFiles(
-    files: Array<{ path: string; content: string; mtime: number }>
+    files: Array<{ path: string; content: string; mtime: number }>,
+    onProgress?: (completedFiles: number, totalFiles: number, totalChunks: number) => void
   ): Promise<ContentChunk[]> {
     const allChunks: ContentChunk[] = []
+    const logInterval = Math.max(1, Math.floor(files.length / 10))
 
-    for (const file of files) {
+    for (let i = 0; i < files.length; i++) {
+      const file = files[i]
+
       try {
         const chunks = await this.createChunks(file.content, file.path, file.mtime)
         allChunks.push(...chunks)
       } catch (error) {
         console.error(`Failed to create chunks for ${sanitizePathGeneric(file.path)}:`, error)
         // Continue with other files even if one fails
+      }
+
+      // Yield to the event loop every file so the HTTP server stays responsive
+      await new Promise<void>(resolve => setImmediate(resolve))
+
+      if ((i + 1) % logInterval === 0) {
+        onProgress?.(i + 1, files.length, allChunks.length)
       }
     }
 

@@ -117,6 +117,7 @@ export class RAGEngine {
       {
         includePatterns: this.config.indexing.includePatterns,
         excludePatterns: this.config.indexing.excludePatterns,
+        maxFileSizeKB: this.config.indexing.maxFileSizeKB,
         reindexAll,
       },
       (indexProgress) => {
@@ -313,7 +314,8 @@ export async function createRAGEngine(
         '.next/**', '.cache/**', 'coverage/**', '.nyc_output/**',
         '**/*.log', '**/logs/**', '**/.DS_Store', '**/Thumbs.db',
         reportExcludePattern
-      ]
+      ],
+      maxFileSizeKB: 512,
     }
   }
 

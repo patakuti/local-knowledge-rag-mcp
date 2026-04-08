@@ -166,6 +166,7 @@ export class VectorManager {
     options: {
       includePatterns: string[]
       excludePatterns: string[]
+      maxFileSizeKB?: number
       reindexAll?: boolean
     },
     updateProgress?: (indexProgress: IndexProgress) => void,
@@ -192,6 +193,7 @@ export class VectorManager {
     options: {
       includePatterns: string[]
       excludePatterns: string[]
+      maxFileSizeKB?: number
       reindexAll?: boolean
     },
     updateProgress?: (indexProgress: IndexProgress) => void,
@@ -199,6 +201,8 @@ export class VectorManager {
   ): Promise<void> {
     const startTime = Date.now()
     let filesToIndex: FileInfo[]
+
+    console.error(`[updateVaultIndex] Starting ${options.reindexAll ? 'full' : 'incremental'} index update`)
 
     try {
       if (options.reindexAll) {
@@ -246,6 +250,8 @@ export class VectorManager {
         }
       }
 
+      console.error(`[updateVaultIndex] ${filesToIndex.length} files to index`)
+
       if (filesToIndex.length === 0) {
         const durationSeconds = (Date.now() - startTime) / 1000
         await this.progressLogger.logComplete(0, 0, durationSeconds)
@@ -258,7 +264,9 @@ export class VectorManager {
       }
 
       // Read and chunk files
-      const { contentChunks, failedFiles, skippedFiles } = await this.prepareContentChunks(filesToIndex)
+      const maxFileSizeKB = options.maxFileSizeKB || 512
+      const { contentChunks, failedFiles, skippedFiles } = await this.prepareContentChunks(filesToIndex, maxFileSizeKB)
+      console.error(`[updateVaultIndex] ${contentChunks.length} chunks from ${filesToIndex.length} files (${skippedFiles.length} skipped, ${failedFiles.length} failed)`)
 
       // Check for cancellation after preparing chunks
       if (cancellationController?.isCancelled) {
@@ -275,9 +283,17 @@ export class VectorManager {
 
       // Record skipped files in database to prevent re-indexing attempts
       if (skippedFiles.length > 0) {
-        const message = `Skipped ${skippedFiles.length} file(s) with no indexable content`
+        const message = `Skipped ${skippedFiles.length} file(s)`
         const sanitizedPaths = skippedFiles.map(f => sanitizePath(f.path, this.workspacePath))
         console.warn(`[Indexing] ${message}: ${sanitizedPaths.join(', ')}`)
+
+        await this.progressLogger.logWarning(message, {
+          skippedFiles: skippedFiles.map(f => ({
+            path: sanitizePath(f.path, this.workspacePath),
+            reason: f.reason,
+            size: f.size
+          }))
+        })
 
         // Create dummy embeddings for skipped files so they're marked as "processed"
         // This prevents them from appearing as "not indexed" in future updates
@@ -361,12 +377,12 @@ export class VectorManager {
         // Log completion only if not cancelled
         if (!result.wasCancelled) {
           const durationSeconds = (Date.now() - startTime) / 1000
+          console.error(`[updateVaultIndex] Completed in ${durationSeconds.toFixed(1)}s (${contentChunks.length} chunks, ${filesToIndex.length} files)`)
           await this.progressLogger.logComplete(contentChunks.length, filesToIndex.length, durationSeconds)
         }
       } finally {
         // Always recreate the HNSW index if we dropped it
         if (droppedIndex) {
-          console.error('Recreating HNSW vector index after bulk insert...')
           await this.createVectorIndex(embeddingModel.dimension)
         }
       }
@@ -534,7 +550,7 @@ export class VectorManager {
   /**
    * Read files and create content chunks
    */
-  private async prepareContentChunks(files: FileInfo[]): Promise<{
+  private async prepareContentChunks(files: FileInfo[], maxFileSizeKB: number = 512): Promise<{
     contentChunks: ContentChunk[]
     failedFiles: Array<{ path: string; error: string; size?: number }>
     skippedFiles: Array<{ path: string; reason: string; size: number }>
@@ -542,9 +558,34 @@ export class VectorManager {
     const failedFiles: Array<{ path: string; error: string; size?: number }> = []
     const skippedFiles: Array<{ path: string; reason: string; size: number }> = []
     const fileContents: Array<{ path: string; content: string; mtime: number }> = []
+    const maxFileSizeBytes = maxFileSizeKB * 1024
 
     // Read all files
+    await this.progressLogger.logProgress({
+      completedChunks: 0,
+      totalChunks: 0,
+      totalFiles: files.length,
+      completedFiles: 0,
+      message: `Reading ${files.length} files...`,
+    })
+
+    let readCount = 0
+    const logInterval = Math.max(1, Math.floor(files.length / 10))
     for (const file of files) {
+      // Skip files exceeding the max size limit
+      if (file.stat.size > maxFileSizeBytes) {
+        const sizeKB = (file.stat.size / 1024).toFixed(0)
+        const reason = `File too large (${sizeKB}KB > ${maxFileSizeKB}KB limit)`
+        console.error(`[prepareContentChunks] Skipping: ${sanitizePath(file.path, this.workspacePath)} - ${reason}`)
+        skippedFiles.push({
+          path: file.path,
+          reason,
+          size: file.stat.size
+        })
+        readCount++
+        continue
+      }
+
       try {
         let content = await this.fileUtils.readFileContent(file.path)
 
@@ -581,11 +622,46 @@ export class VectorManager {
           size: file.stat.size,
         })
       }
+      readCount++
+      // Yield to event loop periodically so the HTTP server stays responsive
+      if (readCount % 20 === 0) {
+        await new Promise<void>(resolve => setImmediate(resolve))
+      }
+      if (readCount % logInterval === 0) {
+        const pct = Math.floor((readCount / files.length) * 100)
+        await this.progressLogger.logProgress({
+          completedChunks: 0,
+          totalChunks: 0,
+          totalFiles: files.length,
+          completedFiles: readCount,
+          message: `Reading files: ${readCount}/${files.length} (${pct}%)`,
+        })
+      }
     }
-
     // Create chunks for all files
-    const contentChunks = await this.textChunker.createChunksForFiles(fileContents)
+    await this.progressLogger.logProgress({
+      completedChunks: 0,
+      totalChunks: 0,
+      totalFiles: files.length,
+      completedFiles: files.length,
+      message: `Creating chunks for ${fileContents.length} files...`,
+    })
+    const contentChunks = await this.textChunker.createChunksForFiles(
+      fileContents,
+      async (completedFiles, totalFiles, totalChunks) => {
+        const pct = Math.floor((completedFiles / totalFiles) * 100)
+        await this.progressLogger.logProgress({
+          completedChunks: 0,
+          totalChunks: 0,
+          totalFiles: files.length,
+          completedFiles: files.length,
+          message: `Creating chunks: ${completedFiles}/${totalFiles} files (${pct}%), ${totalChunks} chunks`,
+        })
+      }
+    )
+    console.error(`[prepareContentChunks] Created ${contentChunks.length} chunks, processing...`)
     const validChunks = this.textChunker.processChunks(contentChunks)
+    console.error(`[prepareContentChunks] ${validChunks.length} valid chunks after processing`)
 
     return { contentChunks: validChunks, failedFiles, skippedFiles }
   }

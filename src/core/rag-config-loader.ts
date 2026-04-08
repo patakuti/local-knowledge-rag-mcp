@@ -112,6 +112,9 @@ function loadIndexingConfigFromEnv(): IndexingConfig {
           reportExcludePattern
         ]
       : defaultExclude,
+    maxFileSizeKB: process.env.RAG_MAX_FILE_SIZE_KB
+      ? parseInt(process.env.RAG_MAX_FILE_SIZE_KB)
+      : 512,
   }
 }
 
