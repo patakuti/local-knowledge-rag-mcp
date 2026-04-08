@@ -144,20 +144,10 @@ export class TextChunker {
 
     for (let i = 0; i < files.length; i++) {
       const file = files[i]
-      const fileSizeKB = (file.content.length / 1024).toFixed(0)
-
-      // Log before processing large files (>50KB) so we can see which file is being processed
-      if (file.content.length >= 50 * 1024) {
-        console.error(`[createChunksForFiles] Processing large file: ${sanitizePathGeneric(file.path)} (${fileSizeKB}KB)...`)
-      }
 
       try {
         const chunks = await this.createChunks(file.content, file.path, file.mtime)
         allChunks.push(...chunks)
-        // Log after processing files that produced many chunks
-        if (chunks.length >= 100) {
-          console.error(`[createChunksForFiles] Large file done: ${sanitizePathGeneric(file.path)} → ${chunks.length} chunks (${fileSizeKB}KB)`)
-        }
       } catch (error) {
         console.error(`Failed to create chunks for ${sanitizePathGeneric(file.path)}:`, error)
         // Continue with other files even if one fails
@@ -167,8 +157,6 @@ export class TextChunker {
       await new Promise<void>(resolve => setImmediate(resolve))
 
       if ((i + 1) % logInterval === 0) {
-        const pct = Math.floor(((i + 1) / files.length) * 100)
-        console.error(`[createChunksForFiles] ${i + 1}/${files.length} files (${pct}%), ${allChunks.length} chunks so far`)
         onProgress?.(i + 1, files.length, allChunks.length)
       }
     }
