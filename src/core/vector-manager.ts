@@ -293,9 +293,17 @@ export class VectorManager {
 
       // Record skipped files in database to prevent re-indexing attempts
       if (skippedFiles.length > 0) {
-        const message = `Skipped ${skippedFiles.length} file(s) with no indexable content`
+        const message = `Skipped ${skippedFiles.length} file(s)`
         const sanitizedPaths = skippedFiles.map(f => sanitizePath(f.path, this.workspacePath))
         console.warn(`[Indexing] ${message}: ${sanitizedPaths.join(', ')}`)
+
+        await this.progressLogger.logWarning(message, {
+          skippedFiles: skippedFiles.map(f => ({
+            path: sanitizePath(f.path, this.workspacePath),
+            reason: f.reason,
+            size: f.size
+          }))
+        })
 
         // Create dummy embeddings for skipped files so they're marked as "processed"
         // This prevents them from appearing as "not indexed" in future updates
