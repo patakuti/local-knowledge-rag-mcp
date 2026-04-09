@@ -533,7 +533,9 @@ export class VectorManager {
     }
   ): Promise<void> {
     const indexedFilePaths = await this.repository.getIndexedFilePaths(this.workspaceId, embeddingModel)
-    const existingFilePaths = await this.fileUtils.filterExistingFiles(indexedFilePaths)
+    if (indexedFilePaths.length === 0) return
+
+    const existingFilePaths = new Set(await this.fileUtils.filterExistingFiles(indexedFilePaths))
 
     // Also check if files still match the include/exclude patterns
     const currentFiles = await this.fileUtils.getFilesToIndex({
@@ -542,9 +544,13 @@ export class VectorManager {
     })
     const currentFilePaths = new Set(currentFiles.map(f => f.path))
 
-    const validFilePaths = existingFilePaths.filter(path => currentFilePaths.has(path))
+    // Directly compute paths to delete: in DB but either missing from disk or excluded by patterns
+    const pathsToDelete = indexedFilePaths.filter(p => !existingFilePaths.has(p) || !currentFilePaths.has(p))
 
-    await this.repository.deleteVectorsForDeletedFiles(this.workspaceId, validFilePaths, embeddingModel)
+    if (pathsToDelete.length === 0) return
+
+    console.error(`[deleteVectorsForDeletedFiles] Removing ${pathsToDelete.length} file(s) from index`)
+    await this.repository.deleteVectorsForMultipleFiles(this.workspaceId, pathsToDelete, embeddingModel)
   }
 
   /**
@@ -981,17 +987,19 @@ export class VectorManager {
     notIndexedFiles: number
     deletedFiles: number
   }> {
-    // Get all indexable files (with FileInfo including size)
-    // This ensures consistency with the indexing logic
+    // Get all files matching patterns (including empty/skipped files)
+    // This must be consistent with deleteVectorsForDeletedFiles
     const allFileInfos = await this.fileUtils.getFilesToIndex({
       includePatterns,
       excludePatterns
     })
 
-    // Filter out empty files (same logic as getFilesToReindex)
-    // Empty files are not indexed, so they should not be counted in statistics
+    // All matching file paths (used for "deleted" calculation - must include
+    // empty/skipped files since they have dummy entries in the DB)
+    const allFilePathSet = new Set(allFileInfos.map(f => f.path))
+
+    // Files with content (used for "total" and "not indexed" display)
     const indexableFiles = allFileInfos.filter(file => file.stat.size > 0)
-    const indexableFilePathSet = new Set(indexableFiles.map(f => f.path))
     const totalFilesInProject = indexableFiles.length
 
     // Get indexed files from database (run both queries in parallel)
@@ -1000,10 +1008,10 @@ export class VectorManager {
       this.repository.getIndexedFiles(this.workspaceId, embeddingModel)
     ])
 
-    // Count deleted files (in DB but not in filesystem or no longer indexable)
+    // Count deleted files (in DB but no longer on disk or excluded by patterns)
     let deletedFiles = 0
     for (const dbPath of indexedFilePaths) {
-      if (!indexableFilePathSet.has(dbPath)) {
+      if (!allFilePathSet.has(dbPath)) {
         deletedFiles++
       }
     }

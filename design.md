@@ -162,7 +162,7 @@
     - Workspace path (project directory)
     - Schema dimension, embedding dimension, validation status
     - Project statistics: totalFilesInProject, indexedFiles, notIndexedFiles, deletedFiles
-      - Note: Empty files (size = 0) are excluded from statistics to match indexing behavior
+      - Note: totalFilesInProject counts files with size > 0; deletedFiles counts DB entries for files no longer on disk or excluded by patterns
   - `/rebuild-index` (POST) rebuilds or updates index based on `reindex_all` parameter
     - Accepts JSON body: `{ "reindex_all": true/false }`
     - `reindex_all: false` performs incremental update
