@@ -554,19 +554,20 @@ export class VectorRepository {
     return results.map(r => r.path)
   }
 
+  /**
+   * @deprecated Use deleteVectorsForMultipleFiles instead.
+   * Kept for backward compatibility but no longer called internally.
+   */
   async deleteVectorsForDeletedFiles(
     workspaceId: string,
     existingFilePaths: string[],
     embeddingModel: EmbeddingModelClient,
   ): Promise<void> {
     if (existingFilePaths.length === 0) {
-      // If no files exist, delete all vectors for this model
       await this.clearAllVectors(workspaceId, embeddingModel)
       return
     }
 
-    // Delete vectors for files that no longer exist
-    // Create placeholders for existing file paths
     const placeholders = existingFilePaths.map((path) => `'${path.replace(/'/g, "''")}'`).join(',')
     const notInCondition = sql.raw(`${embeddingTable.path.name} NOT IN (${placeholders})`)
 
