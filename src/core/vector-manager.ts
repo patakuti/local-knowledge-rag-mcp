@@ -1002,25 +1002,29 @@ export class VectorManager {
     const indexableFiles = allFileInfos.filter(file => file.stat.size > 0)
     const totalFilesInProject = indexableFiles.length
 
-    // Get indexed files from database (run both queries in parallel)
-    const [indexedFiles, indexedFilePaths] = await Promise.all([
-      this.repository.getTotalIndexedFiles(this.workspaceId, embeddingModel),
-      this.repository.getIndexedFiles(this.workspaceId, embeddingModel)
-    ])
+    // Get indexed file paths from database
+    const indexedFilePaths = await this.repository.getIndexedFiles(this.workspaceId, embeddingModel)
 
-    // Count deleted files (in DB but no longer on disk or excluded by patterns)
+    // Classify DB entries by comparing with filesystem state
+    const indexableFilePathSet = new Set(indexableFiles.map(f => f.path))
     let deletedFiles = 0
+    let activelyIndexedFiles = 0
     for (const dbPath of indexedFilePaths) {
       if (!allFilePathSet.has(dbPath)) {
+        // In DB but no longer on disk or excluded by patterns
         deletedFiles++
+      } else if (indexableFilePathSet.has(dbPath)) {
+        // In DB and has content (size > 0)
+        activelyIndexedFiles++
       }
+      // else: in DB but empty/skipped file — not counted in either
     }
 
-    const notIndexedFiles = totalFilesInProject - (indexedFiles - deletedFiles)
+    const notIndexedFiles = totalFilesInProject - activelyIndexedFiles
 
     return {
       totalFilesInProject,
-      indexedFiles,
+      indexedFiles: activelyIndexedFiles,
       notIndexedFiles,
       deletedFiles
     }
