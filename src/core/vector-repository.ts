@@ -226,8 +226,8 @@ export class VectorRepository {
     if (vectors.length === 0) {
       return
     }
-    // The embeddings table has 8 columns, so each row uses 8 parameters.
-    // Batch to stay well under PostgreSQL's 65,535 parameter limit (5000 * 8 = 40,000).
+    // The embeddings table has 9 columns, so each row uses 9 parameters.
+    // Batch to stay well under PostgreSQL's 65,535 parameter limit (5000 * 9 = 45,000).
     const BATCH_SIZE = 5000
     for (let i = 0; i < vectors.length; i += BATCH_SIZE) {
       const batch = vectors.slice(i, i + BATCH_SIZE)
@@ -334,6 +334,7 @@ export class VectorRepository {
         model: embeddingTable.model,
         dimension: embeddingTable.dimension,
         metadata: embeddingTable.metadata,
+        configHash: embeddingTable.configHash,
         distance: sql<number>`embedding <=> ${vectorString}::vector`.as('distance'),
       })
       .from(embeddingTable)
@@ -453,6 +454,41 @@ export class VectorRepository {
       rowCount: stat.rowCount,
       totalDataBytes: Number(stat.totalDataBytes) || 0
     }))
+  }
+
+  /**
+   * Get file paths whose config_hash does not match the current embedding config.
+   * Files with NULL config_hash are only returned when hasPrefix is true
+   * (backward compatibility: NULL means "created before prefix support").
+   */
+  async getFilesWithMismatchedConfigHash(
+    workspaceId: string,
+    embeddingModel: EmbeddingModelClient,
+    hasPrefix: boolean,
+  ): Promise<string[]> {
+    const currentHash = embeddingModel.configHash
+
+    // Build condition: config_hash differs from current
+    // When hasPrefix is false, NULL config_hash is treated as compatible (no reindex needed)
+    const mismatchCondition = hasPrefix
+      ? or(
+          sql`${embeddingTable.configHash} IS NULL`,
+          sql`${embeddingTable.configHash} != ${currentHash}`,
+        )
+      : sql`${embeddingTable.configHash} IS NOT NULL AND ${embeddingTable.configHash} != ${currentHash}`
+
+    const results = await this.db
+      .selectDistinct({ path: embeddingTable.path })
+      .from(embeddingTable)
+      .where(
+        and(
+          eq(embeddingTable.workspaceId, workspaceId),
+          eq(embeddingTable.model, embeddingModel.id),
+          mismatchCondition,
+        ),
+      )
+
+    return results.map(r => r.path)
   }
 
   async getFileModificationTimes(

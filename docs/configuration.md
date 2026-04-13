@@ -128,6 +128,36 @@ Model name. Default: `openai-compatible-text-embedding-3-small`
 EMBEDDING_MODEL=cl-nagoya/ruri-v3-310m
 ```
 
+### Embedding Prefix Settings (Optional)
+
+Some embedding models require instruction prefixes for optimal performance. For example, `cl-nagoya/ruri-v3` requires Japanese prefixes for queries and documents.
+
+**`EMBEDDING_QUERY_PREFIX`**
+
+Prefix to prepend to query text before embedding. Only set this if your model requires it.
+Use quotes to preserve trailing spaces.
+
+```bash
+EMBEDDING_QUERY_PREFIX="検索クエリ: "
+```
+
+**`EMBEDDING_DOCUMENT_PREFIX`**
+
+Prefix to prepend to document text before embedding. Only set this if your model requires it.
+Use quotes to preserve trailing spaces.
+
+```bash
+EMBEDDING_DOCUMENT_PREFIX="検索文書: "
+```
+
+**Examples by model:**
+
+- `cl-nagoya/ruri-v3`: `EMBEDDING_QUERY_PREFIX="検索クエリ: "`, `EMBEDDING_DOCUMENT_PREFIX="検索文書: "`
+- `intfloat/e5` series: `EMBEDDING_QUERY_PREFIX="query: "`, `EMBEDDING_DOCUMENT_PREFIX="passage: "`
+- OpenAI models: No prefix needed (leave unset)
+
+**Note:** Changing prefix settings triggers automatic re-indexing of all documents on the next index update. Existing embeddings created without prefixes are incompatible with the new prefix settings.
+
 ---
 
 ## RAG Configuration (Optional)

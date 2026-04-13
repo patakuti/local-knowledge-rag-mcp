@@ -6,6 +6,8 @@ export interface EmbeddingConfig {
   model: string
   apiKey?: string
   baseUrl?: string
+  queryPrefix?: string
+  documentPrefix?: string
 }
 
 /**
@@ -20,6 +22,8 @@ export function loadEmbeddingConfigFromEnv(): EmbeddingConfig {
   const openaiCompatibleUrl = process.env.OPENAI_COMPATIBLE_BASE_URL
   const ollamaUrl = process.env.OLLAMA_BASE_URL
   const embeddingModel = process.env.EMBEDDING_MODEL
+  const queryPrefix = process.env.EMBEDDING_QUERY_PREFIX
+  const documentPrefix = process.env.EMBEDDING_DOCUMENT_PREFIX
 
   // Determine provider and configuration
   if (openaiCompatibleKey || openaiCompatibleUrl) {
@@ -30,6 +34,8 @@ export function loadEmbeddingConfigFromEnv(): EmbeddingConfig {
       model: embeddingModel || defaultModel,
       apiKey: openaiCompatibleKey,
       baseUrl: openaiCompatibleUrl || 'http://localhost:4000/v1',
+      queryPrefix,
+      documentPrefix,
     }
   } else if (openaiKey) {
     const provider = 'openai'
@@ -38,6 +44,8 @@ export function loadEmbeddingConfigFromEnv(): EmbeddingConfig {
       provider,
       model: embeddingModel || defaultModel,
       apiKey: openaiKey,
+      queryPrefix,
+      documentPrefix,
     }
   } else if (ollamaUrl) {
     const provider = 'ollama'
@@ -46,6 +54,8 @@ export function loadEmbeddingConfigFromEnv(): EmbeddingConfig {
       provider,
       model: embeddingModel || defaultModel,
       baseUrl: ollamaUrl,
+      queryPrefix,
+      documentPrefix,
     }
   } else {
     throw new Error(
