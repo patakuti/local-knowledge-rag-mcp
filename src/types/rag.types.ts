@@ -2,10 +2,14 @@ import { z } from 'zod'
 
 // ===== Core RAG Types =====
 
+export type EmbeddingPurpose = 'query' | 'document'
+
 export type EmbeddingModelClient = {
   id: string
   dimension: number
-  getEmbedding: (text: string) => Promise<number[]>
+  configHash: string
+  hasPrefix: boolean
+  getEmbedding: (text: string, purpose?: EmbeddingPurpose) => Promise<number[]>
 }
 
 export type VectorMetaData = {
@@ -42,7 +46,9 @@ export const embeddingModelConfigSchema = z.object({
   model: z.string(),
   apiKey: z.string().optional(),
   baseUrl: z.string().optional(),
-  dimension: z.number()
+  dimension: z.number(),
+  queryPrefix: z.string().optional(),
+  documentPrefix: z.string().optional(),
 })
 
 export type EmbeddingModelConfig = z.infer<typeof embeddingModelConfigSchema>
@@ -171,6 +177,7 @@ export type SelectEmbedding = {
   dimension: number
   embedding: number[]
   metadata: VectorMetaData
+  configHash: string | null
 }
 
 export type InsertEmbedding = Omit<SelectEmbedding, 'id'>

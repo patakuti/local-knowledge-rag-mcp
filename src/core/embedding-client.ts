@@ -1,7 +1,9 @@
+import { createHash } from 'crypto'
 import OpenAI from 'openai'
 import type {
   EmbeddingModelClient,
   EmbeddingModelConfig,
+  EmbeddingPurpose,
   ProviderType
 } from '../types/rag.types.js'
 import { EmbeddingError } from '../types/rag.types.js'
@@ -11,7 +13,26 @@ import { sanitizeUrl } from '../utils/log-sanitizer.js'
 export abstract class BaseEmbeddingClient implements EmbeddingModelClient {
   abstract readonly id: string
   abstract readonly dimension: number
-  abstract getEmbedding(text: string): Promise<number[]>
+  protected abstract embedText(text: string): Promise<number[]>
+
+  constructor(protected baseConfig: EmbeddingModelConfig) {}
+
+  get configHash(): string {
+    const key = `${this.baseConfig.model}|${this.baseConfig.queryPrefix ?? ''}|${this.baseConfig.documentPrefix ?? ''}`
+    return createHash('sha256').update(key).digest('hex').slice(0, 16)
+  }
+
+  get hasPrefix(): boolean {
+    return !!(this.baseConfig.queryPrefix || this.baseConfig.documentPrefix)
+  }
+
+  async getEmbedding(text: string, purpose?: EmbeddingPurpose): Promise<number[]> {
+    const prefix = purpose === 'query' ? this.baseConfig.queryPrefix
+                 : purpose === 'document' ? this.baseConfig.documentPrefix
+                 : undefined
+    const input = prefix ? prefix + text : text
+    return this.embedText(input)
+  }
 }
 
 // OpenAI Embedding Client
@@ -19,7 +40,7 @@ export class OpenAIEmbeddingClient extends BaseEmbeddingClient {
   private client: OpenAI
 
   constructor(private config: EmbeddingModelConfig) {
-    super()
+    super(config)
 
     if (!config.apiKey) {
       throw new Error('OpenAI API key is required')
@@ -39,7 +60,7 @@ export class OpenAIEmbeddingClient extends BaseEmbeddingClient {
     return this.config.dimension
   }
 
-  async getEmbedding(text: string): Promise<number[]> {
+  protected async embedText(text: string): Promise<number[]> {
     if (!this.client.apiKey) {
       throw new EmbeddingError(
         'OpenAI API key is missing. Please set it in configuration.',
@@ -79,7 +100,7 @@ export class OpenAICompatibleEmbeddingClient extends BaseEmbeddingClient {
   private client: OpenAI
 
   constructor(private config: EmbeddingModelConfig) {
-    super()
+    super(config)
 
     if (!config.apiKey) {
       throw new Error('OpenAI-compatible API key is required')
@@ -100,7 +121,7 @@ export class OpenAICompatibleEmbeddingClient extends BaseEmbeddingClient {
     return this.config.dimension
   }
 
-  async getEmbedding(text: string): Promise<number[]> {
+  protected async embedText(text: string): Promise<number[]> {
     try {
       const embedding = await this.client.embeddings.create({
         model: this.config.model,
@@ -143,7 +164,7 @@ export class OllamaEmbeddingClient extends BaseEmbeddingClient {
   private client: OpenAI
 
   constructor(private config: EmbeddingModelConfig) {
-    super()
+    super(config)
 
     const baseUrl = config.baseUrl || 'http://localhost:11434/v1'
     this.client = new OpenAI({
@@ -160,7 +181,7 @@ export class OllamaEmbeddingClient extends BaseEmbeddingClient {
     return this.config.dimension
   }
 
-  async getEmbedding(text: string): Promise<number[]> {
+  protected async embedText(text: string): Promise<number[]> {
     try {
       const embedding = await this.client.embeddings.create({
         model: this.config.model,
@@ -227,7 +248,9 @@ export const DEFAULT_EMBEDDING_CONFIGS: Record<string, EmbeddingModelConfig> = {
 export function getEmbeddingModelConfig(
   modelId: string,
   apiKey?: string,
-  baseUrl?: string
+  baseUrl?: string,
+  queryPrefix?: string,
+  documentPrefix?: string,
 ): EmbeddingModelConfig {
   const config = DEFAULT_EMBEDDING_CONFIGS[modelId]
 
@@ -236,7 +259,9 @@ export function getEmbeddingModelConfig(
     return {
       ...config,
       apiKey: apiKey || config.apiKey,
-      baseUrl: baseUrl || config.baseUrl
+      baseUrl: baseUrl || config.baseUrl,
+      queryPrefix,
+      documentPrefix,
     }
   }
 
@@ -268,6 +293,8 @@ export function getEmbeddingModelConfig(
     model: modelId,
     apiKey: apiKey || process.env.OPENAI_COMPATIBLE_API_KEY || process.env.OPENAI_API_KEY,
     baseUrl: inferredBaseUrl,
-    dimension
+    dimension,
+    queryPrefix,
+    documentPrefix,
   }
 }

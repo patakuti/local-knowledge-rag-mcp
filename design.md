@@ -78,6 +78,8 @@
   - Rate limiting and retry handling
   - Abstraction across providers
   - Automatic dimension detection and configuration
+  - Embedding prefix support (query/document prefixes for models like ruri-v3, E5)
+  - Config hash tracking for automatic re-indexing on prefix changes
 - **Embedding Dimensions**
   - text-embedding-3-small: 1536 dimensions
   - text-embedding-3-large: 3072 dimensions
@@ -323,7 +325,7 @@ After editing the `.env` file, you have two options:
    - Index Managers will also need to be restarted
 
 **Effect of Changes:**
-- **Embedding changes** (provider, model): Require index rebuild if dimensions change
+- **Embedding changes** (provider, model, prefix): Require index rebuild if dimensions or prefix settings change (prefix changes trigger automatic re-indexing)
 - **RAG chunking/pattern changes**: Require index rebuild for changes to take effect
 - **RAG search/report changes**: Applied immediately after reload
 
@@ -346,6 +348,8 @@ All environment variables are configured and used on the **MCP server side**. MC
   - Note: OpenAI SDK automatically appends `/embeddings` to the base URL
   - Example: `https://example.com/v1` → requests to `https://example.com/v1/embeddings`
 - `EMBEDDING_MODEL`: Embedding model to use (optional, auto-detected)
+- `EMBEDDING_QUERY_PREFIX`: Prefix for query embeddings (optional, e.g., `クエリ: ` for ruri-v3)
+- `EMBEDDING_DOCUMENT_PREFIX`: Prefix for document embeddings (optional, e.g., `文章: ` for ruri-v3)
 
 **RAG Configuration (all optional, have defaults):**
 
@@ -721,11 +725,16 @@ CREATE TABLE embeddings (
   model TEXT NOT NULL,
   dimension SMALLINT NOT NULL,
   embedding vector(768) NOT NULL,
-  metadata JSONB NOT NULL
+  metadata JSONB NOT NULL,
+  config_hash TEXT             -- Hash of embedding config (prefix settings etc.)
 );
 
 CREATE INDEX embeddings_workspace_id_index ON embeddings (workspace_id);
 ```
+
+- `config_hash` tracks the embedding configuration (model + prefix settings) used to generate each embedding
+- When prefix settings change, files with mismatched config_hash are automatically re-indexed
+- NULL config_hash (from pre-prefix databases) is treated as compatible when no prefixes are configured
 
 #### Query Isolation
 

@@ -142,7 +142,7 @@ export class RAGEngine {
     } = params
 
     // Get query embedding
-    const queryEmbedding = await this.embeddingModel.getEmbedding(query)
+    const queryEmbedding = await this.embeddingModel.getEmbedding(query, 'query')
 
     // Perform similarity search
     let results = await this.vectorManager.performSimilaritySearch(
@@ -223,7 +223,7 @@ export class RAGEngine {
    * Get embedding for a query (useful for debugging)
    */
   async getQueryEmbedding(query: string): Promise<number[]> {
-    return await this.embeddingModel.getEmbedding(query)
+    return await this.embeddingModel.getEmbedding(query, 'query')
   }
 
   /**

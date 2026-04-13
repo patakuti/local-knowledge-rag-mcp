@@ -19,7 +19,9 @@ export function loadRAGConfigFromEnv(): RAGConfig {
   const embeddingModelConfig = getEmbeddingModelConfig(
     embeddingConfig.model,
     embeddingConfig.apiKey,
-    embeddingConfig.baseUrl
+    embeddingConfig.baseUrl,
+    embeddingConfig.queryPrefix,
+    embeddingConfig.documentPrefix,
   )
 
   // Load other RAG configurations from environment variables

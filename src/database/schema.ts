@@ -61,6 +61,7 @@ export const embeddingTable = pgTable(
     dimension: smallint('dimension').notNull(), // dimension of the vector
     embedding: vector('embedding', { length: 768 }).notNull(), // embedding vector (768 for Ollama/ruri, 1536 for OpenAI small, 3072 for OpenAI large)
     metadata: jsonb('metadata').notNull().$type<VectorMetaData>(),
+    configHash: text('config_hash'), // hash of embedding config (prefix settings etc.) for reindex detection
   },
   (table) => [
     index('embeddings_workspace_id_index').on(table.workspaceId),
@@ -89,7 +90,8 @@ export const createEmbeddingsTableSQL = `
     model TEXT NOT NULL,
     dimension SMALLINT NOT NULL,
     embedding vector(768) NOT NULL,
-    metadata JSONB NOT NULL
+    metadata JSONB NOT NULL,
+    config_hash TEXT
   );
 
   -- Create indexes

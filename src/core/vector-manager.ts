@@ -66,6 +66,11 @@ export class VectorManager {
     const client = await this.pool.connect()
     try {
       await client.query(createEmbeddingsTableSQL)
+
+      // Add config_hash column if it doesn't exist (migration for existing databases)
+      await client.query(`
+        ALTER TABLE embeddings ADD COLUMN IF NOT EXISTS config_hash TEXT
+      `)
     } catch (error: any) {
       // Check if this is a "column does not exist" error (PostgreSQL error code 42703)
       // This indicates the table exists but is missing the workspace_id column
@@ -220,6 +225,24 @@ export class VectorManager {
       } else {
         // Incremental update: clean up deleted files first
         await this.deleteVectorsForDeletedFiles(embeddingModel, options)
+
+        if (cancellationController?.isCancelled) {
+          await this.progressLogger.logCancelled(0, 0, 0, 0)
+          updateProgress?.({ completedChunks: 0, totalChunks: 0, totalFiles: 0, isCancelled: true })
+          return
+        }
+
+        // Delete vectors for files with mismatched config hash (e.g. prefix changed)
+        // so they will be picked up as "not indexed" and re-embedded
+        const mismatchedFiles = await this.repository.getFilesWithMismatchedConfigHash(
+          this.workspaceId,
+          embeddingModel,
+          embeddingModel.hasPrefix,
+        )
+        if (mismatchedFiles.length > 0) {
+          console.error(`[updateVaultIndex] Config hash mismatch detected for ${mismatchedFiles.length} file(s), re-indexing`)
+          await this.repository.deleteVectorsForMultipleFiles(this.workspaceId, mismatchedFiles, embeddingModel)
+        }
 
         if (cancellationController?.isCancelled) {
           await this.progressLogger.logCancelled(0, 0, 0, 0)
@@ -485,7 +508,8 @@ export class VectorManager {
             skipped: true,
             reason: skipped.reason,
             originalSize: skipped.size
-          }
+          },
+          configHash: embeddingModel.configHash,
         }
         return embedding
       })
@@ -736,7 +760,7 @@ export class VectorManager {
                   throw new Error('Cancelled')
                 }
 
-                const embedding = await embeddingModel.getEmbedding(chunk.content)
+                const embedding = await embeddingModel.getEmbedding(chunk.content, 'document')
 
                 // Check for cancellation before updating progress counters
                 if (cancellationController?.isCancelled) {
@@ -770,6 +794,7 @@ export class VectorManager {
                   dimension: embeddingModel.dimension,
                   embedding,
                   metadata: chunk.metadata,
+                  configHash: embeddingModel.configHash,
                 }
               },
               {
