@@ -138,7 +138,7 @@ Prefix to prepend to query text before embedding. Only set this if your model re
 Use quotes to preserve trailing spaces.
 
 ```bash
-EMBEDDING_QUERY_PREFIX="クエリ: "
+EMBEDDING_QUERY_PREFIX="検索クエリ: "
 ```
 
 **`EMBEDDING_DOCUMENT_PREFIX`**
@@ -147,12 +147,12 @@ Prefix to prepend to document text before embedding. Only set this if your model
 Use quotes to preserve trailing spaces.
 
 ```bash
-EMBEDDING_DOCUMENT_PREFIX="文章: "
+EMBEDDING_DOCUMENT_PREFIX="検索文書: "
 ```
 
 **Examples by model:**
 
-- `cl-nagoya/ruri-v3`: `EMBEDDING_QUERY_PREFIX="クエリ: "`, `EMBEDDING_DOCUMENT_PREFIX="文章: "`
+- `cl-nagoya/ruri-v3`: `EMBEDDING_QUERY_PREFIX="検索クエリ: "`, `EMBEDDING_DOCUMENT_PREFIX="検索文書: "`
 - `intfloat/e5` series: `EMBEDDING_QUERY_PREFIX="query: "`, `EMBEDDING_DOCUMENT_PREFIX="passage: "`
 - OpenAI models: No prefix needed (leave unset)
 
