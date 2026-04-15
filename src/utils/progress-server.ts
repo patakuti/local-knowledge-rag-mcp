@@ -117,7 +117,7 @@ export class ProgressServer {
     return new Promise((resolve, reject) => {
       this.server = http.createServer(async (req, res) => {
         // Enable CORS
-        res.setHeader('Access-Control-Allow-Origin', '*')
+        res.setHeader('Access-Control-Allow-Origin', `http://127.0.0.1:${this.actualPort}`)
         res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS')
         res.setHeader('Access-Control-Allow-Headers', 'Content-Type')
 
