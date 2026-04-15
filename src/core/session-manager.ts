@@ -81,7 +81,7 @@ export class SessionManagerImpl implements SessionManager {
 
   private findOldestResult(): string | undefined {
     let oldestId: string | undefined
-    let oldestTime = Date.now()
+    let oldestTime = Infinity
 
     for (const [id, result] of this.searchResults) {
       if (result.timestamp.getTime() < oldestTime) {
