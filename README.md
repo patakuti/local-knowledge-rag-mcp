@@ -69,10 +69,12 @@ docker run -d \
   -e POSTGRES_USER=user \
   -e POSTGRES_PASSWORD=password \
   -p 5432:5432 \
+  -v local-knowledge-rag-data:/var/lib/postgresql/data \
+  --restart unless-stopped \
   ankane/pgvector
 ```
 
-**Or install locally:** See [PostgreSQL Setup](#postgresql-setup) for detailed instructions.
+> **Note:** The credentials above are for local development only. If port 5432 is already in use, change the host port (e.g., `-p 5433:5432`) and update `DATABASE_URL` accordingly.
 
 ### 2. Clone and build the project
 
