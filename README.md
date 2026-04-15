@@ -294,10 +294,9 @@ Web-based interface for monitoring indexing progress and managing your knowledge
 
 ### Network Security
 
-- **Index Manager (Web UI)**: Runs on localhost:3456 without authentication
+- **Index Manager (Web UI)**: Binds to `127.0.0.1:3456` (loopback only) without authentication
+  - Not accessible from external networks by default
   - Designed for trusted local development environments only
-  - Do not expose to untrusted networks via port forwarding or reverse proxies
-  - If external access is needed, implement proper authentication and access controls
 
 ### Local Data Handling
 
