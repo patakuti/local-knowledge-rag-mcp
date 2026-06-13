@@ -327,8 +327,9 @@ Results are displayed in a persistent `*rag-results*` buffer.
 ;;; lkrag integration
 
 (defvar rag-workspace-path nil
-  "lkrag workspace path. Falls back to `vc-root-dir', then `default-directory'.
-Set this when the indexed root differs from the VCS root.
+  "Explicit lkrag workspace path.
+When nil (default), --find-workspace is used to locate the nearest
+indexed ancestor directory automatically.
 Example: (setq rag-workspace-path \"~/etc/txt/myproject/\")")
 
 (defvar rag-results-mode-map
@@ -388,20 +389,23 @@ Example: (setq rag-workspace-path \"~/etc/txt/myproject/\")")
       (goto-char pos)
       (rag-results--preview))))
 
-(defun rag--workspace ()
-  (expand-file-name (or rag-workspace-path (vc-root-dir) default-directory)))
-
 (defun rag-search (query)
   "Search lkrag index and display results in *rag-results* buffer."
   (interactive "sSearch: ")
-  (let* ((workspace (rag--workspace))
+  (let* ((explicit-workspace (and rag-workspace-path
+                                  (expand-file-name rag-workspace-path)))
+         (display-root (or explicit-workspace default-directory))
          (lkrag (or (executable-find "lkrag")
                     (expand-file-name "~/.npm-global/bin/lkrag")))
-         (output (shell-command-to-string
+         (cmd (if explicit-workspace
                   (format "%s search %s --format tsv --limit 20 --quiet --workspace-path %s"
                           lkrag
                           (shell-quote-argument query)
-                          (shell-quote-argument workspace))))
+                          (shell-quote-argument explicit-workspace))
+                (format "%s search %s --format tsv --limit 20 --quiet --find-workspace"
+                        lkrag
+                        (shell-quote-argument query))))
+         (output (shell-command-to-string cmd))
          (tsv-lines (seq-filter (lambda (l) (string-match-p "\t" l))
                                 (split-string (string-trim output) "\n" t)))
          (buf (get-buffer-create "*rag-results*")))
@@ -410,7 +414,7 @@ Example: (setq rag-workspace-path \"~/etc/txt/myproject/\")")
         (erase-buffer)
         (rag-results-mode)
         (insert (propertize (format "Search: %s\n" query) 'face 'bold))
-        (insert (propertize (format "Path:   %s\n\n" workspace) 'face 'shadow))
+        (insert (propertize (format "From:   %s\n\n" display-root) 'face 'shadow))
         (if (null tsv-lines)
             (insert "No results found.\n")
           (dolist (line tsv-lines)
@@ -419,7 +423,7 @@ Example: (setq rag-workspace-path \"~/etc/txt/myproject/\")")
                    (lineno  (string-to-number (nth 1 parts)))
                    (score   (nth 2 parts))
                    (content (nth 3 parts))
-                   (relpath (file-relative-name path workspace))
+                   (relpath (file-relative-name path display-root))
                    (excerpt (truncate-string-to-width content 60))
                    (start   (point)))
               (insert (propertize relpath 'face 'compilation-info)
@@ -437,7 +441,7 @@ Example: (setq rag-workspace-path \"~/etc/txt/myproject/\")")
 ```
 
 Notes:
-- `rag-workspace-path` — set to the path used when running `lkrag update-index` if it differs from the VCS root.
+- `rag-workspace-path` — set only when the indexed root differs from the directory you work in. When nil, `--find-workspace` locates the nearest indexed ancestor automatically.
 - `expand-file-name` ensures `~` is resolved before passing to the shell, avoiding single-quote quoting issues.
 - The `*rag-results*` buffer persists across searches; each new search overwrites it.
 
