@@ -308,8 +308,13 @@ lkrag status
 
 ### Emacs Integration Example
 
-Results are displayed in a persistent `*rag-results*` buffer.  
-Navigate with `n`/`p`, open a file with `RET`, close with `q`.
+Results are displayed in a persistent `*rag-results*` buffer.
+
+| Key | Action |
+|-----|--------|
+| `n` / `p` | Next/previous result — previews the file in other window, focus stays on results |
+| `RET` | Open selected file full-screen (`delete-other-windows`) |
+| `q` | Close results buffer |
 
 ```elisp
 ;;; lkrag integration
@@ -335,33 +340,46 @@ Example: (setq rag-workspace-path \"~/etc/txt/myproject/\")")
   "Return (path . line) for the result at point, or nil."
   (get-text-property (line-beginning-position) 'rag-location))
 
+(defun rag-results--preview ()
+  "Show file at point in other window; focus stays on results buffer."
+  (when-let ((loc (rag-results--loc)))
+    (save-selected-window
+      (find-file-other-window (car loc))
+      (goto-line (cdr loc))
+      (recenter))))
+
 (defun rag-results-open ()
-  "Open result at point in other window."
+  "Open result at point full-screen."
   (interactive)
   (when-let ((loc (rag-results--loc)))
     (find-file-other-window (car loc))
     (goto-line (cdr loc))
-    (recenter)))
+    (recenter)
+    (delete-other-windows)))
 
 (defun rag-results-next ()
-  "Move cursor to the next result line."
+  "Move to the next result and preview it."
   (interactive)
   (let ((pos (save-excursion
                (forward-line 1)
                (while (and (not (eobp)) (null (rag-results--loc)))
                  (forward-line 1))
                (and (rag-results--loc) (point)))))
-    (when pos (goto-char pos))))
+    (when pos
+      (goto-char pos)
+      (rag-results--preview))))
 
 (defun rag-results-prev ()
-  "Move cursor to the previous result line."
+  "Move to the previous result and preview it."
   (interactive)
   (let ((pos (save-excursion
                (forward-line -1)
                (while (and (not (bobp)) (null (rag-results--loc)))
                  (forward-line -1))
                (and (rag-results--loc) (point)))))
-    (when pos (goto-char pos))))
+    (when pos
+      (goto-char pos)
+      (rag-results--preview))))
 
 (defun rag--workspace ()
   (expand-file-name (or rag-workspace-path (vc-root-dir) default-directory)))
