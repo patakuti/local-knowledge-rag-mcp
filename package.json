@@ -4,10 +4,14 @@
   "description": "Local Knowledge RAG MCP Server - Semantic search and retrieval for local documents using vector embeddings",
   "main": "dist/mcp-server.js",
   "type": "module",
+  "bin": {
+    "lkrag": "dist/cli.js"
+  },
   "scripts": {
     "build": "tsc",
     "dev": "tsc --watch",
     "start": "node dist/mcp-server.js",
+    "cli": "node dist/cli.js",
     "test": "NODE_OPTIONS='--experimental-vm-modules' jest",
     "lint": "eslint src/**/*.ts",
     "lint:fix": "eslint src/**/*.ts --fix"

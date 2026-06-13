@@ -254,6 +254,81 @@ Web-based interface for monitoring indexing progress and managing your knowledge
 
 ---
 
+## CLI Tool (`lkrag`)
+
+A command-line interface for index management and search, suitable for cron jobs, editor integrations, and automation.
+
+### Installation
+
+After building the project, install globally or use via `npx`:
+
+```bash
+npm run build
+npm link   # makes lkrag available in PATH
+```
+
+### Commands
+
+```
+lkrag search <query>       Search indexed documents
+lkrag update-index         Incrementally update the index
+lkrag rebuild-index        Rebuild the entire index from scratch
+lkrag status               Show index status
+```
+
+### Options
+
+| Option | Default | Description |
+|--------|---------|-------------|
+| `--workspace-path <path>` | current directory | Workspace to operate on |
+| `--limit <n>` | 5 | Number of search results |
+| `--min-similarity <n>` | 0.3 | Minimum similarity score (0–1) |
+| `--format <fmt>` | plain | Output format: `plain`, `tsv`, `json` |
+| `--env-file <path>` | — | Load additional .env file |
+
+### Examples
+
+```bash
+# Search with plain output
+lkrag search "authentication flow" --workspace-path /path/to/docs
+
+# TSV output for editor integration (path, line, score, content)
+lkrag search "setup guide" --format tsv --limit 10
+
+# JSON output for scripting
+lkrag search "database schema" --format json | jq '.[0].path'
+
+# Schedule index updates via cron (daily at 3am)
+# 0 3 * * * node /path/to/dist/cli.js update-index --workspace-path /path/to/docs
+
+# Check index status
+lkrag status
+```
+
+### Emacs Integration Example
+
+```elisp
+(defun rag-search (query)
+  "Search RAG index and open selected file."
+  (interactive "sSearch: ")
+  (let* ((output (shell-command-to-string
+                  (format "lkrag search %s --format tsv --limit 20 --workspace-path %s"
+                          (shell-quote-argument query)
+                          (shell-quote-argument default-directory))))
+         (lines (split-string (string-trim output) "\n" t))
+         (choice (completing-read "Result: " lines nil t))
+         (parts (split-string choice "\t")))
+    (find-file (car parts))
+    (goto-line (string-to-number (cadr parts)))))
+```
+
+### Index Update Behavior
+
+- If an **Index Manager** server is running for the workspace, `update-index` and `rebuild-index` delegate to it via HTTP (non-blocking).
+- If no server is running, the CLI runs the operation **directly** with progress output to stderr.
+
+---
+
 ## Troubleshooting
 
 ### Documents not being indexed

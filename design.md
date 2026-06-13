@@ -115,7 +115,21 @@
   - Default output directory: `./rag-reports/`
   - Filename format: `YYYYMMDD_HHMMSS_<query>.md`
 
-### 3. Utility Layer (src/utils/)
+### 3. CLI Tool (src/cli.ts)
+
+A standalone command-line interface compiled to `dist/cli.js` and exposed as the `lkrag` binary via `package.json#bin`.
+
+**Commands:** `search`, `update-index`, `rebuild-index`, `status`
+
+**Output formats:** `plain` (human-readable), `tsv` (machine-parseable, for editor integrations), `json` (for scripting)
+
+**Index operation strategy:**
+1. If an Index Manager HTTP server is registered for the workspace, delegates via `POST /rebuild-index`
+2. Otherwise, runs the operation directly via `RAGEngine.updateVaultIndex()`
+
+Progress output goes to stderr; search results and status go to stdout, keeping them separable in scripts and editor integrations.
+
+### 4. Utility Layer (src/utils/)
 
 #### file-utils.ts
 
@@ -918,3 +932,5 @@ try {
 - Query history persistence
 - More advanced search filtering
 - Workspace management UI (list, switch, delete workspaces)
+- CLI: shell completion scripts (bash/zsh/fish)
+- CLI: `--watch` mode for streaming index progress
