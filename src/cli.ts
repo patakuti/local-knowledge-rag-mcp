@@ -42,7 +42,7 @@ function parseArgs(argv: string[]): ParsedArgs {
 }
 
 function printUsage(): void {
-  console.log(`Usage: rag-cli <command> [options]
+  console.log(`Usage: lkrag <command> [options]
 
 Commands:
   search <query>       Search indexed documents
@@ -57,10 +57,10 @@ Options:
   --format <fmt>              Output format: plain|tsv|json (default: plain)
 
 Examples:
-  rag-cli search "authentication flow" --workspace-path /path/to/docs
-  rag-cli search "setup guide" --format tsv --limit 10
-  rag-cli update-index --workspace-path /path/to/docs
-  rag-cli status
+  lkrag search "authentication flow" --workspace-path /path/to/docs
+  lkrag search "setup guide" --format tsv --limit 10
+  lkrag update-index --workspace-path /path/to/docs
+  lkrag status
 `)
 }
 
@@ -150,16 +150,16 @@ async function cmdUpdateIndex(workspacePath: string, reindexAll: boolean): Promi
         body: JSON.stringify({ reindex_all: reindexAll }),
       })
       if (res.ok) {
-        console.error(`[rag-cli] Triggered ${label} via Index Manager on port ${info.port}`)
+        console.error(`[lkrag] Triggered ${label} via Index Manager on port ${info.port}`)
         return
       }
     } catch {
-      console.error('[rag-cli] Index Manager not responding, running directly...')
+      console.error('[lkrag] Index Manager not responding, running directly...')
     }
   }
 
   // Direct execution
-  console.error(`[rag-cli] Starting ${label} for workspace: ${workspacePath}`)
+  console.error(`[lkrag] Starting ${label} for workspace: ${workspacePath}`)
   const engine = await createRAGEngineFromConfig(workspacePath)
   try {
     await engine.updateVaultIndex({ reindexAll }, (progress) => {

@@ -5,7 +5,7 @@
   "main": "dist/mcp-server.js",
   "type": "module",
   "bin": {
-    "rag-cli": "dist/cli.js"
+    "lkrag": "dist/cli.js"
   },
   "scripts": {
     "build": "tsc",

@@ -117,7 +117,7 @@
 
 ### 3. CLI Tool (src/cli.ts)
 
-A standalone command-line interface compiled to `dist/cli.js` and exposed as the `rag-cli` binary via `package.json#bin`.
+A standalone command-line interface compiled to `dist/cli.js` and exposed as the `lkrag` binary via `package.json#bin`.
 
 **Commands:** `search`, `update-index`, `rebuild-index`, `status`
 

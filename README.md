@@ -254,7 +254,7 @@ Web-based interface for monitoring indexing progress and managing your knowledge
 
 ---
 
-## CLI Tool (`rag-cli`)
+## CLI Tool (`lkrag`)
 
 A command-line interface for index management and search, suitable for cron jobs, editor integrations, and automation.
 
@@ -264,16 +264,16 @@ After building the project, install globally or use via `npx`:
 
 ```bash
 npm run build
-npm link   # makes rag-cli available in PATH
+npm link   # makes lkrag available in PATH
 ```
 
 ### Commands
 
 ```
-rag-cli search <query>       Search indexed documents
-rag-cli update-index         Incrementally update the index
-rag-cli rebuild-index        Rebuild the entire index from scratch
-rag-cli status               Show index status
+lkrag search <query>       Search indexed documents
+lkrag update-index         Incrementally update the index
+lkrag rebuild-index        Rebuild the entire index from scratch
+lkrag status               Show index status
 ```
 
 ### Options
@@ -290,19 +290,19 @@ rag-cli status               Show index status
 
 ```bash
 # Search with plain output
-rag-cli search "authentication flow" --workspace-path /path/to/docs
+lkrag search "authentication flow" --workspace-path /path/to/docs
 
 # TSV output for editor integration (path, line, score, content)
-rag-cli search "setup guide" --format tsv --limit 10
+lkrag search "setup guide" --format tsv --limit 10
 
 # JSON output for scripting
-rag-cli search "database schema" --format json | jq '.[0].path'
+lkrag search "database schema" --format json | jq '.[0].path'
 
 # Schedule index updates via cron (daily at 3am)
 # 0 3 * * * node /path/to/dist/cli.js update-index --workspace-path /path/to/docs
 
 # Check index status
-rag-cli status
+lkrag status
 ```
 
 ### Emacs Integration Example
@@ -312,7 +312,7 @@ rag-cli status
   "Search RAG index and open selected file."
   (interactive "sSearch: ")
   (let* ((output (shell-command-to-string
-                  (format "rag-cli search %s --format tsv --limit 20 --workspace-path %s"
+                  (format "lkrag search %s --format tsv --limit 20 --workspace-path %s"
                           (shell-quote-argument query)
                           (shell-quote-argument default-directory))))
          (lines (split-string (string-trim output) "\n" t))
