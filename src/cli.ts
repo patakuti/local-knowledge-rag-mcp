@@ -175,15 +175,24 @@ async function cmdUpdateIndex(workspacePath: string, reindexAll: boolean): Promi
 async function cmdStatus(workspacePath: string, format: string): Promise<void> {
   const engine = await createRAGEngineFromConfig(workspacePath)
   try {
+    const config = engine.getConfig()
+    const projectStats = await engine.getVectorManager().getProjectStatistics(
+      engine.getEmbeddingModel(),
+      config.indexing.includePatterns,
+      config.indexing.excludePatterns
+    )
     const status = await engine.getIndexStatus()
+
     if (format === 'json') {
-      console.log(JSON.stringify(status, null, 2))
+      console.log(JSON.stringify({ ...status, ...projectStats }, null, 2))
     } else {
-      console.log(`Initialized : ${status.isInitialized}`)
-      console.log(`Total files : ${status.totalFiles}`)
-      console.log(`Indexed files: ${status.indexedFiles}`)
-      console.log(`Last updated : ${status.lastUpdated ?? 'never'}`)
-      console.log(`Model        : ${status.embeddingModel}`)
+      console.log(`Initialized    : ${status.isInitialized}`)
+      console.log(`Total files    : ${projectStats.totalFilesInProject}`)
+      console.log(`Indexed files  : ${projectStats.indexedFiles}`)
+      console.log(`Not indexed    : ${projectStats.notIndexedFiles}`)
+      console.log(`Deleted files  : ${projectStats.deletedFiles}`)
+      console.log(`Last updated   : ${status.lastUpdated ?? 'never'}`)
+      console.log(`Model          : ${status.embeddingModel}`)
     }
   } finally {
     await engine.cleanup()
