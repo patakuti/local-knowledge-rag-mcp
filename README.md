@@ -422,7 +422,8 @@ Example: (setq rag-workspace-path \"~/etc/txt/myproject/\")")
               (put-text-property start (point) 'rag-location (cons path lineno)))))
         (goto-char (point-min))
         (forward-line 3)))
-    (pop-to-buffer buf)))
+    (pop-to-buffer buf)
+    (rag-results--preview)))
 
 ;; Optional key binding
 ;; (global-set-key (kbd "C-c r") #'rag-search)
