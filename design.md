@@ -123,6 +123,10 @@ A standalone command-line interface compiled to `dist/cli.js` and exposed as the
 
 **Output formats:** `plain` (human-readable), `tsv` (machine-parseable, for editor integrations), `json` (for scripting)
 
+**Workspace resolution:**
+- `--workspace-path <path>`: explicit workspace (takes priority)
+- `--find-workspace`: traverse from current directory up to the root, using the first ancestor that has indexed data in the database. Applies to all commands symmetrically (`search`, `update-index`, `rebuild-index`). Without either flag, the current directory is used as-is.
+
 **Index operation strategy:**
 1. If an Index Manager HTTP server is registered for the workspace, delegates via `POST /rebuild-index`
 2. Otherwise, runs the operation directly via `RAGEngine.updateVaultIndex()`

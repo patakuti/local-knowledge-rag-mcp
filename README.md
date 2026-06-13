@@ -281,6 +281,7 @@ lkrag status               Show index status
 | Option | Default | Description |
 |--------|---------|-------------|
 | `--workspace-path <path>` | current directory | Workspace to operate on |
+| `--find-workspace` | — | Traverse up from current directory to find an indexed workspace |
 | `--limit <n>` | 5 | Number of search results |
 | `--min-similarity <n>` | 0.3 | Minimum similarity score (0–1) |
 | `--format <fmt>` | plain | Output format: `plain`, `tsv`, `json` |
@@ -293,11 +294,17 @@ lkrag status               Show index status
 # Search with plain output
 lkrag search "authentication flow" --workspace-path /path/to/docs
 
+# Search from a subdirectory — finds the nearest indexed ancestor automatically
+lkrag search "error handling" --find-workspace
+
 # TSV output for editor integration (path, line, score, content)
 lkrag search "setup guide" --format tsv --limit 10
 
 # JSON output for scripting
 lkrag search "database schema" --format json | jq '.[0].path'
+
+# Update index from a subdirectory
+lkrag update-index --find-workspace
 
 # Schedule index updates via cron (daily at 3am)
 # 0 3 * * * node /path/to/dist/cli.js update-index --workspace-path /path/to/docs

@@ -9,6 +9,7 @@ const __filename = fileURLToPath(import.meta.url)
 const __dirname = dirname(__filename)
 config({ path: join(__dirname, '..', '.env'), quiet: true })
 
+import { Pool } from 'pg'
 import { createRAGEngineFromConfig } from './core/rag-engine.js'
 import { IndexManagerRegistry } from './utils/index-manager-registry.js'
 import { generateWorkspaceId } from './utils/workspace-utils.js'
@@ -41,6 +42,44 @@ function parseArgs(argv: string[]): ParsedArgs {
   return { options, positional }
 }
 
+/**
+ * Traverse up from startPath to find the nearest ancestor directory
+ * that has indexed content in the database. Returns the resolved path
+ * of the first match, or throws if none is found.
+ */
+async function findWorkspace(startPath: string): Promise<string> {
+  const databaseUrl = process.env.DATABASE_URL
+  if (!databaseUrl) {
+    throw new Error(
+      'DATABASE_URL environment variable is required for --find-workspace'
+    )
+  }
+
+  const pool = new Pool({ connectionString: databaseUrl })
+  try {
+    let current = resolve(startPath)
+    while (true) {
+      const workspaceId = generateWorkspaceId(current)
+      const result = await pool.query(
+        'SELECT 1 FROM embeddings WHERE workspace_id = $1 LIMIT 1',
+        [workspaceId]
+      )
+      if (result.rowCount && result.rowCount > 0) {
+        return current
+      }
+      const parent = dirname(current)
+      if (parent === current) {
+        throw new Error(
+          `No indexed workspace found in "${startPath}" or any of its ancestor directories`
+        )
+      }
+      current = parent
+    }
+  } finally {
+    await pool.end()
+  }
+}
+
 function printUsage(): void {
   console.log(`Usage: lkrag <command> [options]
 
@@ -52,6 +91,7 @@ Commands:
 
 Options:
   --workspace-path <path>     Workspace path (default: current directory)
+  --find-workspace            Traverse up from current directory to find an indexed workspace
   --limit <n>                 Number of search results (default: 5)
   --min-similarity <n>        Minimum similarity score 0-1 (default: 0.3)
   --format <fmt>              Output format: plain|tsv|json (default: plain)
@@ -60,7 +100,9 @@ Options:
 Examples:
   lkrag search "authentication flow" --workspace-path /path/to/docs
   lkrag search "setup guide" --format tsv --limit 10 --quiet
+  lkrag search "error handling" --find-workspace
   lkrag update-index --workspace-path /path/to/docs
+  lkrag update-index --find-workspace
   lkrag status
 `)
 }
@@ -217,7 +259,16 @@ async function main(): Promise<void> {
     process.env.LKRAG_QUIET = '1'
   }
 
-  const workspacePath = resolve(options['workspace-path'] ?? process.cwd())
+  const findWorkspaceFlag = options['find-workspace'] === 'true'
+  const explicitPath = options['workspace-path']
+
+  let workspacePath: string
+  if (findWorkspaceFlag && !explicitPath) {
+    workspacePath = await findWorkspace(process.cwd())
+  } else {
+    workspacePath = resolve(explicitPath ?? process.cwd())
+  }
+
   const format = options['format'] ?? 'plain'
 
   try {
