@@ -284,6 +284,7 @@ lkrag status               Show index status
 | `--limit <n>` | 5 | Number of search results |
 | `--min-similarity <n>` | 0.3 | Minimum similarity score (0–1) |
 | `--format <fmt>` | plain | Output format: `plain`, `tsv`, `json` |
+| `--quiet` | — | Suppress informational messages on stderr |
 | `--env-file <path>` | — | Load additional .env file |
 
 ### Examples
@@ -308,19 +309,47 @@ lkrag status
 ### Emacs Integration Example
 
 ```elisp
+(defvar rag-workspace-path nil
+  "lkrag workspace path. Falls back to vc-root-dir when nil.")
+
 (defun rag-search (query)
   "Search RAG index and open selected file."
   (interactive "sSearch: ")
-  (let* ((output (shell-command-to-string
-                  (format "lkrag search %s --format tsv --limit 20 --workspace-path %s"
+  (let* ((workspace (expand-file-name
+                     (or rag-workspace-path (vc-root-dir) default-directory)))
+         (lkrag (or (executable-find "lkrag")
+                    (expand-file-name "~/.npm-global/bin/lkrag")))
+         (output (shell-command-to-string
+                  (format "%s search %s --format tsv --limit 20 --quiet --workspace-path %s"
+                          lkrag
                           (shell-quote-argument query)
-                          (shell-quote-argument default-directory))))
-         (lines (split-string (string-trim output) "\n" t))
-         (choice (completing-read "Result: " lines nil t))
-         (parts (split-string choice "\t")))
-    (find-file (car parts))
-    (goto-line (string-to-number (cadr parts)))))
+                          (shell-quote-argument workspace))))
+         (lines (seq-filter (lambda (l) (string-match-p "\t" l))
+                            (split-string (string-trim output) "\n" t)))
+         (candidates
+          (mapcar (lambda (line)
+                    (let* ((parts (split-string line "\t"))
+                           (path   (nth 0 parts))
+                           (lineno (nth 1 parts))
+                           (score  (nth 2 parts))
+                           (content (nth 3 parts))
+                           (excerpt (truncate-string-to-width content 60)))
+                      (cons (format "%s:%s [%s] %s"
+                                    (file-relative-name path workspace)
+                                    lineno score excerpt)
+                            line)))
+                  lines))
+         (choice (completing-read "Result: " (mapcar #'car candidates) nil t))
+         (tsv    (cdr (assoc choice candidates)))
+         (parts  (split-string tsv "\t")))
+    (find-file (nth 0 parts))
+    (goto-line (string-to-number (nth 1 parts)))))
 ```
+
+Notes:
+- `rag-workspace-path` — set this to the path used when indexing if it differs from the VCS root.  
+  Example: `(setq rag-workspace-path "~/etc/txt/myproject/")`
+- `expand-file-name` ensures `~` is resolved before passing to the shell, avoiding quoting issues.
 
 ### Index Update Behavior
 

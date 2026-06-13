@@ -55,10 +55,11 @@ Options:
   --limit <n>                 Number of search results (default: 5)
   --min-similarity <n>        Minimum similarity score 0-1 (default: 0.3)
   --format <fmt>              Output format: plain|tsv|json (default: plain)
+  --quiet                     Suppress informational messages on stderr
 
 Examples:
   lkrag search "authentication flow" --workspace-path /path/to/docs
-  lkrag search "setup guide" --format tsv --limit 10
+  lkrag search "setup guide" --format tsv --limit 10 --quiet
   lkrag update-index --workspace-path /path/to/docs
   lkrag status
 `)
@@ -210,6 +211,10 @@ async function main(): Promise<void> {
   if (!command || command === 'help' || options['help'] === 'true') {
     printUsage()
     process.exit(0)
+  }
+
+  if (options['quiet'] === 'true') {
+    process.env.LKRAG_QUIET = '1'
   }
 
   const workspacePath = resolve(options['workspace-path'] ?? process.cwd())

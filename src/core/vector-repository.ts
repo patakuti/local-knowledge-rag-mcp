@@ -128,7 +128,9 @@ export class VectorRepository {
       // Check if it's a vector type (pgvector extension)
       if (udt_name === 'vector' || data_type === 'USER-DEFINED') {
         this.embeddingColumnType = 'vector'
-        console.error('✓ Using pgvector native implementation for similarity search')
+        if (!process.env.LKRAG_QUIET) {
+          console.error('✓ Using pgvector native implementation for similarity search')
+        }
       } else if (data_type === 'jsonb') {
         this.embeddingColumnType = 'jsonb'
         console.warn('⚠ Using JSONB fallback for similarity search. Consider running migration: psql $DATABASE_URL -f scripts/migrate-to-pgvector.sql')

@@ -285,8 +285,10 @@ export function getEmbeddingModelConfig(
     dimension = 768 // Common for smaller multilingual models
   }
 
-  console.error(`Creating custom embedding config for: ${modelId}`)
-  console.error(`Detected provider: ${provider}, dimension: ${dimension}, baseUrl: ${sanitizeUrl(inferredBaseUrl)}`)
+  if (!process.env.LKRAG_QUIET) {
+    console.error(`Creating custom embedding config for: ${modelId}`)
+    console.error(`Detected provider: ${provider}, dimension: ${dimension}, baseUrl: ${sanitizeUrl(inferredBaseUrl)}`)
+  }
 
   return {
     provider,
