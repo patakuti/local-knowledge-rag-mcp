@@ -284,6 +284,7 @@ lkrag status               Show index status
 | `--limit <n>` | 5 | Number of search results |
 | `--min-similarity <n>` | 0.3 | Minimum similarity score (0–1) |
 | `--format <fmt>` | plain | Output format: `plain`, `tsv`, `json` |
+| `--quiet` | — | Suppress informational messages on stderr |
 | `--env-file <path>` | — | Load additional .env file |
 
 ### Examples
@@ -307,20 +308,131 @@ lkrag status
 
 ### Emacs Integration Example
 
+Results are displayed in a persistent `*rag-results*` buffer.
+
+| Key | Action |
+|-----|--------|
+| `n` / `p` | Next/previous result — previews the file in other window, focus stays on results |
+| `RET` | Open selected file full-screen (`delete-other-windows`) |
+| `q` | Close results buffer |
+
 ```elisp
+;;; lkrag integration
+
+(defvar rag-workspace-path nil
+  "lkrag workspace path. Falls back to `vc-root-dir', then `default-directory'.
+Set this when the indexed root differs from the VCS root.
+Example: (setq rag-workspace-path \"~/etc/txt/myproject/\")")
+
+(defvar rag-results-mode-map
+  (let ((map (make-sparse-keymap)))
+    (define-key map (kbd "n")   #'rag-results-next)
+    (define-key map (kbd "p")   #'rag-results-prev)
+    (define-key map (kbd "RET") #'rag-results-open)
+    (define-key map (kbd "q")   #'quit-window)
+    map))
+
+(define-derived-mode rag-results-mode special-mode "RAG"
+  "Major mode for lkrag search results.
+\\{rag-results-mode-map}")
+
+(defun rag-results--loc ()
+  "Return (path . line) for the result at point, or nil."
+  (get-text-property (line-beginning-position) 'rag-location))
+
+(defun rag-results--preview ()
+  "Show file at point in other window; focus stays on results buffer."
+  (when-let ((loc (rag-results--loc)))
+    (save-selected-window
+      (find-file-other-window (car loc))
+      (goto-line (cdr loc))
+      (recenter))))
+
+(defun rag-results-open ()
+  "Open result at point full-screen."
+  (interactive)
+  (when-let ((loc (rag-results--loc)))
+    (find-file-other-window (car loc))
+    (goto-line (cdr loc))
+    (recenter)
+    (delete-other-windows)))
+
+(defun rag-results-next ()
+  "Move to the next result and preview it."
+  (interactive)
+  (let ((pos (save-excursion
+               (forward-line 1)
+               (while (and (not (eobp)) (null (rag-results--loc)))
+                 (forward-line 1))
+               (and (rag-results--loc) (point)))))
+    (when pos
+      (goto-char pos)
+      (rag-results--preview))))
+
+(defun rag-results-prev ()
+  "Move to the previous result and preview it."
+  (interactive)
+  (let ((pos (save-excursion
+               (forward-line -1)
+               (while (and (not (bobp)) (null (rag-results--loc)))
+                 (forward-line -1))
+               (and (rag-results--loc) (point)))))
+    (when pos
+      (goto-char pos)
+      (rag-results--preview))))
+
+(defun rag--workspace ()
+  (expand-file-name (or rag-workspace-path (vc-root-dir) default-directory)))
+
 (defun rag-search (query)
-  "Search RAG index and open selected file."
+  "Search lkrag index and display results in *rag-results* buffer."
   (interactive "sSearch: ")
-  (let* ((output (shell-command-to-string
-                  (format "lkrag search %s --format tsv --limit 20 --workspace-path %s"
+  (let* ((workspace (rag--workspace))
+         (lkrag (or (executable-find "lkrag")
+                    (expand-file-name "~/.npm-global/bin/lkrag")))
+         (output (shell-command-to-string
+                  (format "%s search %s --format tsv --limit 20 --quiet --workspace-path %s"
+                          lkrag
                           (shell-quote-argument query)
-                          (shell-quote-argument default-directory))))
-         (lines (split-string (string-trim output) "\n" t))
-         (choice (completing-read "Result: " lines nil t))
-         (parts (split-string choice "\t")))
-    (find-file (car parts))
-    (goto-line (string-to-number (cadr parts)))))
+                          (shell-quote-argument workspace))))
+         (tsv-lines (seq-filter (lambda (l) (string-match-p "\t" l))
+                                (split-string (string-trim output) "\n" t)))
+         (buf (get-buffer-create "*rag-results*")))
+    (with-current-buffer buf
+      (let ((inhibit-read-only t))
+        (erase-buffer)
+        (rag-results-mode)
+        (insert (propertize (format "Search: %s\n" query) 'face 'bold))
+        (insert (propertize (format "Path:   %s\n\n" workspace) 'face 'shadow))
+        (if (null tsv-lines)
+            (insert "No results found.\n")
+          (dolist (line tsv-lines)
+            (let* ((parts   (split-string line "\t"))
+                   (path    (nth 0 parts))
+                   (lineno  (string-to-number (nth 1 parts)))
+                   (score   (nth 2 parts))
+                   (content (nth 3 parts))
+                   (relpath (file-relative-name path workspace))
+                   (excerpt (truncate-string-to-width content 60))
+                   (start   (point)))
+              (insert (propertize relpath 'face 'compilation-info)
+                      (propertize (format ":%d" lineno) 'face 'compilation-line-number)
+                      (propertize (format " [%s] " score) 'face 'shadow)
+                      excerpt "\n")
+              (put-text-property start (point) 'rag-location (cons path lineno)))))
+        (goto-char (point-min))
+        (forward-line 3)))
+    (pop-to-buffer buf)
+    (rag-results--preview)))
+
+;; Optional key binding
+;; (global-set-key (kbd "C-c r") #'rag-search)
 ```
+
+Notes:
+- `rag-workspace-path` — set to the path used when running `lkrag update-index` if it differs from the VCS root.
+- `expand-file-name` ensures `~` is resolved before passing to the shell, avoiding single-quote quoting issues.
+- The `*rag-results*` buffer persists across searches; each new search overwrites it.
 
 ### Index Update Behavior
 
