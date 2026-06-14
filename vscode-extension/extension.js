@@ -86,11 +86,19 @@ function search(lkrag, query, workspacePath, limit, callback) {
         args.push('--find-workspace');
     }
 
-    execFile(lkrag, args, (err, stdout, stderr) => {
+    // Use the first VS Code workspace folder as cwd so --find-workspace
+    // traverses from the project root, not the extension host directory.
+    const cwd = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath ?? os.homedir();
+
+    execFile(lkrag, args, { cwd }, (err, stdout, stderr) => {
         if (err && !stdout) {
             if (err.code === 'ENOENT') {
                 vscode.window.showErrorMessage(
                     'lkrag not found. Set lkrag.executablePath in settings or ensure lkrag is in PATH.'
+                );
+            } else {
+                vscode.window.showErrorMessage(
+                    `lkrag error: ${stderr.trim() || err.message}`
                 );
             }
             callback([], null);
