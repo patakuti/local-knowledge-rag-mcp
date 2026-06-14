@@ -394,18 +394,27 @@ Example: (setq rag-workspace-path \"~/etc/txt/myproject/\")")
   (interactive "sSearch: ")
   (let* ((explicit-workspace (and rag-workspace-path
                                   (expand-file-name rag-workspace-path)))
-         (display-root (or explicit-workspace default-directory))
          (lkrag (or (executable-find "lkrag")
                     (expand-file-name "~/.npm-global/bin/lkrag")))
+         (stderr-file (make-temp-file "lkrag-stderr"))
          (cmd (if explicit-workspace
-                  (format "%s search %s --format tsv --limit 20 --quiet --workspace-path %s"
+                  (format "%s search %s --format tsv --limit 20 --quiet --workspace-path %s 2>%s"
                           lkrag
                           (shell-quote-argument query)
-                          (shell-quote-argument explicit-workspace))
-                (format "%s search %s --format tsv --limit 20 --quiet --find-workspace"
+                          (shell-quote-argument explicit-workspace)
+                          (shell-quote-argument stderr-file))
+                (format "%s search %s --format tsv --limit 20 --find-workspace 2>%s"
                         lkrag
-                        (shell-quote-argument query))))
+                        (shell-quote-argument query)
+                        (shell-quote-argument stderr-file))))
          (output (shell-command-to-string cmd))
+         (stderr (prog1 (with-temp-buffer
+                          (insert-file-contents stderr-file)
+                          (buffer-string))
+                   (delete-file stderr-file)))
+         (found-workspace (when (string-match "^\\[lkrag\\] workspace: \\(.*\\)" stderr)
+                            (match-string 1 stderr)))
+         (display-root (or explicit-workspace found-workspace default-directory))
          (tsv-lines (seq-filter (lambda (l) (string-match-p "\t" l))
                                 (split-string (string-trim output) "\n" t)))
          (buf (get-buffer-create "*rag-results*")))
@@ -442,6 +451,7 @@ Example: (setq rag-workspace-path \"~/etc/txt/myproject/\")")
 
 Notes:
 - `rag-workspace-path` — set only when the indexed root differs from the directory you work in. When nil, `--find-workspace` locates the nearest indexed ancestor automatically.
+- When `--find-workspace` is used, lkrag prints the resolved workspace path to stderr (`[lkrag] workspace: /path/to/ws`). The Emacs integration captures this via a temp file to display the correct `From:` path and compute relative paths accurately.
 - `expand-file-name` ensures `~` is resolved before passing to the shell, avoiding single-quote quoting issues.
 - The `*rag-results*` buffer persists across searches; each new search overwrites it.
 

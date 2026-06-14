@@ -265,6 +265,9 @@ async function main(): Promise<void> {
   let workspacePath: string
   if (findWorkspaceFlag && !explicitPath) {
     workspacePath = await findWorkspace(process.cwd())
+    if (process.env.LKRAG_QUIET !== '1') {
+      console.error(`[lkrag] workspace: ${workspacePath}`)
+    }
   } else {
     workspacePath = resolve(explicitPath ?? process.cwd())
   }
