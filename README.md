@@ -455,6 +455,57 @@ Notes:
 - `expand-file-name` ensures `~` is resolved before passing to the shell, avoiding single-quote quoting issues.
 - The `*rag-results*` buffer persists across searches; each new search overwrites it.
 
+### VS Code Integration Example
+
+A minimal VS Code extension is included in `vscode-extension/`. It opens a **QuickPick** search panel where results are previewed as you navigate, and Enter opens the selected file at the matching line.
+
+**Installation**
+
+```bash
+# From the repo root — link or copy into VS Code's extensions directory
+ln -s "$(pwd)/vscode-extension" ~/.vscode/extensions/lkrag-search-0.1.0
+# Then reload VS Code (Developer: Reload Window)
+```
+
+Alternatively, package as a `.vsix` and install via the Extensions sidebar:
+
+```bash
+npm install -g @vscode/vsce
+cd vscode-extension
+vsce package          # produces lkrag-search-0.1.0.vsix
+# Extensions sidebar → ⋯ → Install from VSIX…
+```
+
+**Usage**
+
+Open the Command Palette (`Ctrl+Shift+P` / `Cmd+Shift+P`) and run **lkrag: Search**.
+
+- Type a query — results appear after a short debounce
+- Arrow keys move through results; the file is previewed in the editor
+- `Enter` opens the selected file at the matching line
+- `Escape` cancels
+
+**Keybinding (optional)**
+
+Add to `keybindings.json` (`Ctrl+Shift+P` → "Open Keyboard Shortcuts (JSON)"):
+
+```json
+{ "key": "ctrl+alt+r", "command": "lkrag.search" }
+```
+
+**Settings**
+
+| Setting | Default | Description |
+|---------|---------|-------------|
+| `lkrag.workspacePath` | `""` | Explicit workspace path. Leave empty to use `--find-workspace`. |
+| `lkrag.executablePath` | `""` | Path to `lkrag` binary. Leave empty to auto-detect. |
+| `lkrag.limit` | `20` | Maximum number of results. |
+
+Notes:
+- `lkrag.workspacePath` — set only when the indexed root differs from the directory you work in. When empty, `--find-workspace` locates the nearest indexed ancestor automatically.
+- The extension has no npm dependencies; no `npm install` is required before use.
+- The VS Code extension host inherits PATH from the environment VS Code was launched in. If `lkrag` is not found, set `lkrag.executablePath` explicitly.
+
 ### Index Update Behavior
 
 - If an **Index Manager** server is running for the workspace, `update-index` and `rebuild-index` delegate to it via HTTP (non-blocking).

@@ -1,0 +1,40 @@
+{
+  "name": "lkrag-search",
+  "displayName": "lkrag Search",
+  "description": "Search local knowledge index using lkrag",
+  "version": "0.1.0",
+  "engines": {
+    "vscode": "^1.80.0"
+  },
+  "categories": ["Other"],
+  "activationEvents": [],
+  "main": "./extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "lkrag.search",
+        "title": "lkrag: Search"
+      }
+    ],
+    "configuration": {
+      "title": "lkrag Search",
+      "properties": {
+        "lkrag.workspacePath": {
+          "type": "string",
+          "default": "",
+          "description": "Explicit lkrag workspace path. Leave empty to use --find-workspace automatically."
+        },
+        "lkrag.executablePath": {
+          "type": "string",
+          "default": "",
+          "description": "Path to lkrag executable. Leave empty to auto-detect from common locations and PATH."
+        },
+        "lkrag.limit": {
+          "type": "number",
+          "default": 20,
+          "description": "Maximum number of search results."
+        }
+      }
+    }
+  }
+}
