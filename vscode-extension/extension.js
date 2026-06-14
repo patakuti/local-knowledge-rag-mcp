@@ -41,12 +41,15 @@ function runSearch() {
     const qp = vscode.window.createQuickPick();
     qp.placeholder = 'Search local knowledge index...';
     qp.matchOnDescription = false;
-    qp.matchOnDetail = true;
+    qp.matchOnDetail = false;
 
     let debounceTimer = null;
     let resolvedWorkspace = explicitWorkspace || null;
+    let lastQuery = '';
+    let ignoreChange = false;
 
     qp.onDidChangeValue(value => {
+        if (ignoreChange) return;
         if (debounceTimer) clearTimeout(debounceTimer);
         if (!value.trim()) {
             qp.items = [];
@@ -54,10 +57,18 @@ function runSearch() {
             return;
         }
         qp.busy = true;
+        lastQuery = value.trim();
         debounceTimer = setTimeout(() => {
-            search(lkrag, value.trim(), explicitWorkspace, limit, (items, ws) => {
+            search(lkrag, lastQuery, explicitWorkspace, limit, (items, ws) => {
                 if (ws) resolvedWorkspace = ws;
-                qp.title = resolvedWorkspace ? `From: ${resolvedWorkspace}` : undefined;
+                const fromStr = resolvedWorkspace ? `  —  ${resolvedWorkspace}` : '';
+                // Clear the filter value so VS Code shows all items unfiltered.
+                // lkrag does semantic search; results won't textually match the query.
+                ignoreChange = true;
+                qp.value = '';
+                setTimeout(() => { ignoreChange = false; }, 0);
+                qp.title = `"${lastQuery}"${fromStr}`;
+                qp.placeholder = 'Type to search again...';
                 qp.items = items;
                 qp.busy = false;
             });
