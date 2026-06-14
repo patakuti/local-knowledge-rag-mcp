@@ -49,7 +49,10 @@ function runSearch() {
     let ignoreChange = false;
 
     qp.onDidChangeValue(value => {
-        if (ignoreChange) return;
+        if (ignoreChange) {
+            if (value === '') return; // programmatic clear — skip
+            ignoreChange = false;    // user started typing a new query
+        }
         if (debounceTimer) clearTimeout(debounceTimer);
         if (!value.trim()) {
             qp.items = [];
@@ -62,11 +65,10 @@ function runSearch() {
             search(lkrag, lastQuery, explicitWorkspace, limit, (items, ws) => {
                 if (ws) resolvedWorkspace = ws;
                 const fromStr = resolvedWorkspace ? `  —  ${resolvedWorkspace}` : '';
-                // Clear the filter value so VS Code shows all items unfiltered.
-                // lkrag does semantic search; results won't textually match the query.
+                // Set ignoreChange before clearing value so the resulting
+                // onDidChangeValue('') event is suppressed regardless of timing.
                 ignoreChange = true;
                 qp.value = '';
-                setTimeout(() => { ignoreChange = false; }, 0);
                 qp.title = `"${lastQuery}"${fromStr}`;
                 qp.placeholder = 'Type to search again...';
                 qp.items = items;
