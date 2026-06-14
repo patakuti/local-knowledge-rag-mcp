@@ -86,6 +86,7 @@ function runSearch() {
 
     qp.onDidAccept(() => {
         const item = qp.activeItems[0];
+        out.appendLine(`[lkrag] accept: label=${item?.label} filePath=${item?.filePath} lineNo=${item?.lineNo}`);
         if (item && item.filePath) {
             qp.hide();
             openFile(item.filePath, item.lineNo);
@@ -138,13 +139,18 @@ function search(lkrag, query, workspacePath, limit, callback) {
             .filter(l => l.includes('\t'))
             .map(line => {
                 const parts = line.split('\t');
-                const filePath = parts[0];
+                const rawPath = parts[0];
                 const lineNo = parseInt(parts[1], 10) || 1;
                 const score = parts[2] || '';
                 const content = (parts[3] || '').trim();
+                // lkrag TSV outputs paths relative to the workspace root.
+                // Resolve to absolute so vscode.Uri.file() works correctly.
+                const filePath = resolvedWs
+                    ? path.resolve(resolvedWs, rawPath)
+                    : path.resolve(cwd, rawPath);
                 const relPath = resolvedWs
                     ? path.relative(resolvedWs, filePath)
-                    : filePath;
+                    : rawPath;
                 return {
                     label: relPath,
                     description: `line ${lineNo}  [${score}]`,
@@ -175,6 +181,7 @@ async function previewFile(filePath, lineNo) {
 
 async function openFile(filePath, lineNo) {
     try {
+        out.appendLine(`[lkrag] openFile: ${filePath}:${lineNo}`);
         const uri = vscode.Uri.file(filePath);
         const doc = await vscode.workspace.openTextDocument(uri);
         const selection = new vscode.Range(lineNo - 1, 0, lineNo - 1, 0);
@@ -182,7 +189,10 @@ async function openFile(filePath, lineNo) {
             preview: false,
             selection,
         });
-    } catch (_) {}
+    } catch (e) {
+        out.appendLine(`[lkrag] openFile error: ${e.message}`);
+        vscode.window.showErrorMessage(`lkrag: cannot open file: ${e.message}`);
+    }
 }
 
 function deactivate() {}
