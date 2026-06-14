@@ -3,6 +3,7 @@ import {
   and,
   count,
   eq,
+  getTableName,
   inArray,
   like,
   or,
@@ -16,14 +17,22 @@ import type {
   InsertEmbedding,
   SelectEmbedding
 } from '../types/rag.types.js'
-import { embeddingTable } from '../database/schema.js'
+import { createEmbeddingTable, embeddingTable } from '../database/schema.js'
 
 export class VectorRepository {
   private db: NodePgDatabase
+  private table: ReturnType<typeof createEmbeddingTable>
   private embeddingColumnType: 'vector' | 'jsonb' | null = null
 
-  constructor(db: NodePgDatabase) {
+  /**
+   * @param db        Drizzle database instance
+   * @param table     Table schema to operate on. Defaults to the legacy shared
+   *                  `embeddings` table; pass a workspace-specific table for
+   *                  per-workspace isolation.
+   */
+  constructor(db: NodePgDatabase, table: ReturnType<typeof createEmbeddingTable> = embeddingTable) {
     this.db = db
+    this.table = table
   }
 
   /**
@@ -110,11 +119,19 @@ export class VectorRepository {
       return this.embeddingColumnType
     }
 
+    const tableName = getTableName(this.table)
+
+    // Workspace-specific tables are always created with pgvector enabled
+    if (tableName !== 'embeddings') {
+      this.embeddingColumnType = 'vector'
+      return 'vector'
+    }
+
     try {
       const result = await this.db.execute(sql`
         SELECT data_type, udt_name
         FROM information_schema.columns
-        WHERE table_name = 'embeddings'
+        WHERE table_name = ${tableName}
         AND column_name = 'embedding'
       `)
 
@@ -151,13 +168,13 @@ export class VectorRepository {
   ): Promise<string[]> {
     const indexedFiles = await this.db
       .select({
-        path: embeddingTable.path,
+        path: this.table.path,
       })
-      .from(embeddingTable)
+      .from(this.table)
       .where(
         and(
-          eq(embeddingTable.workspaceId, workspaceId),
-          eq(embeddingTable.model, embeddingModel.id),
+          eq(this.table.workspaceId, workspaceId),
+          eq(this.table.model, embeddingModel.id),
         ),
       )
     return [...new Set(indexedFiles.map((row) => row.path))] // Remove duplicates
@@ -180,12 +197,12 @@ export class VectorRepository {
       const batch = filePaths.slice(i, i + BATCH_SIZE)
       const results = await this.db
         .select()
-        .from(embeddingTable)
+        .from(this.table)
         .where(
           and(
-            eq(embeddingTable.workspaceId, workspaceId),
-            inArray(embeddingTable.path, batch),
-            eq(embeddingTable.model, embeddingModel.id),
+            eq(this.table.workspaceId, workspaceId),
+            inArray(this.table.path, batch),
+            eq(this.table.model, embeddingModel.id),
           ),
         )
 
@@ -213,12 +230,12 @@ export class VectorRepository {
     for (let i = 0; i < filePaths.length; i += BATCH_SIZE) {
       const batch = filePaths.slice(i, i + BATCH_SIZE)
       await this.db
-        .delete(embeddingTable)
+        .delete(this.table)
         .where(
           and(
-            eq(embeddingTable.workspaceId, workspaceId),
-            inArray(embeddingTable.path, batch),
-            eq(embeddingTable.model, embeddingModel.id),
+            eq(this.table.workspaceId, workspaceId),
+            inArray(this.table.path, batch),
+            eq(this.table.model, embeddingModel.id),
           ),
         )
     }
@@ -233,7 +250,7 @@ export class VectorRepository {
     const BATCH_SIZE = 5000
     for (let i = 0; i < vectors.length; i += BATCH_SIZE) {
       const batch = vectors.slice(i, i + BATCH_SIZE)
-      await this.db.insert(embeddingTable).values(batch)
+      await this.db.insert(this.table).values(batch)
     }
   }
 
@@ -242,11 +259,11 @@ export class VectorRepository {
     embeddingModel: EmbeddingModelClient,
   ): Promise<void> {
     await this.db
-      .delete(embeddingTable)
+      .delete(this.table)
       .where(
         and(
-          eq(embeddingTable.workspaceId, workspaceId),
-          eq(embeddingTable.model, embeddingModel.id),
+          eq(this.table.workspaceId, workspaceId),
+          eq(this.table.model, embeddingModel.id),
         ),
       )
   }
@@ -275,16 +292,16 @@ export class VectorRepository {
 
     // Build where conditions
     const whereConditions: SQL<unknown>[] = [
-      eq(embeddingTable.workspaceId, workspaceId),
-      eq(embeddingTable.dimension, embeddingModel.dimension),
-      eq(embeddingTable.model, embeddingModel.id),
+      eq(this.table.workspaceId, workspaceId),
+      eq(this.table.dimension, embeddingModel.dimension),
+      eq(this.table.model, embeddingModel.id),
       // Exclude skipped files (files with no indexable content)
-      sql`(${embeddingTable.metadata}->>'skipped' IS NULL OR ${embeddingTable.metadata}->>'skipped' != 'true')`,
+      sql`(${this.table.metadata}->>'skipped' IS NULL OR ${this.table.metadata}->>'skipped' != 'true')`,
     ]
 
     // Add scope conditions
     if (scope?.files && scope.files.length > 0) {
-      whereConditions.push(inArray(embeddingTable.path, scope.files))
+      whereConditions.push(inArray(this.table.path, scope.files))
     }
 
     // Note: scope.folders filtering is done in JavaScript after fetching
@@ -328,18 +345,18 @@ export class VectorRepository {
     // Build the query using pgvector's <=> operator
     const results = await this.db
       .select({
-        id: embeddingTable.id,
-        workspaceId: embeddingTable.workspaceId,
-        path: embeddingTable.path,
-        mtime: embeddingTable.mtime,
-        content: embeddingTable.content,
-        model: embeddingTable.model,
-        dimension: embeddingTable.dimension,
-        metadata: embeddingTable.metadata,
-        configHash: embeddingTable.configHash,
+        id: this.table.id,
+        workspaceId: this.table.workspaceId,
+        path: this.table.path,
+        mtime: this.table.mtime,
+        content: this.table.content,
+        model: this.table.model,
+        dimension: this.table.dimension,
+        metadata: this.table.metadata,
+        configHash: this.table.configHash,
         distance: sql<number>`embedding <=> ${vectorString}::vector`.as('distance'),
       })
-      .from(embeddingTable)
+      .from(this.table)
       .where(and(...whereConditions))
       .orderBy(sql`embedding <=> ${vectorString}::vector`)
       .limit(limit * 2) // Fetch more to account for similarity filtering
@@ -382,7 +399,7 @@ export class VectorRepository {
     // Get all relevant embeddings from database
     const dbResults = await this.db
       .select()
-      .from(embeddingTable)
+      .from(this.table)
       .where(and(...whereConditions))
 
     // Calculate cosine similarity in JavaScript
@@ -443,13 +460,13 @@ export class VectorRepository {
   async getEmbeddingStats(workspaceId: string): Promise<EmbeddingDbStats[]> {
     const stats = await this.db
       .select({
-        model: embeddingTable.model,
+        model: this.table.model,
         rowCount: count().as('row_count'),
-        totalDataBytes: sum(sql<number>`octet_length(${embeddingTable.content})`).as('total_data_bytes'),
+        totalDataBytes: sum(sql<number>`octet_length(${this.table.content})`).as('total_data_bytes'),
       })
-      .from(embeddingTable)
-      .where(eq(embeddingTable.workspaceId, workspaceId))
-      .groupBy(embeddingTable.model)
+      .from(this.table)
+      .where(eq(this.table.workspaceId, workspaceId))
+      .groupBy(this.table.model)
 
     return stats.map(stat => ({
       model: stat.model,
@@ -474,18 +491,18 @@ export class VectorRepository {
     // When hasPrefix is false, NULL config_hash is treated as compatible (no reindex needed)
     const mismatchCondition = hasPrefix
       ? or(
-          sql`${embeddingTable.configHash} IS NULL`,
-          sql`${embeddingTable.configHash} != ${currentHash}`,
+          sql`${this.table.configHash} IS NULL`,
+          sql`${this.table.configHash} != ${currentHash}`,
         )
-      : sql`${embeddingTable.configHash} IS NOT NULL AND ${embeddingTable.configHash} != ${currentHash}`
+      : sql`${this.table.configHash} IS NOT NULL AND ${this.table.configHash} != ${currentHash}`
 
     const results = await this.db
-      .selectDistinct({ path: embeddingTable.path })
-      .from(embeddingTable)
+      .selectDistinct({ path: this.table.path })
+      .from(this.table)
       .where(
         and(
-          eq(embeddingTable.workspaceId, workspaceId),
-          eq(embeddingTable.model, embeddingModel.id),
+          eq(this.table.workspaceId, workspaceId),
+          eq(this.table.model, embeddingModel.id),
           mismatchCondition,
         ),
       )
@@ -511,15 +528,15 @@ export class VectorRepository {
       const batch = filePaths.slice(i, i + BATCH_SIZE)
       const results = await this.db
         .select({
-          path: embeddingTable.path,
-          mtime: embeddingTable.mtime,
+          path: this.table.path,
+          mtime: this.table.mtime,
         })
-        .from(embeddingTable)
+        .from(this.table)
         .where(
           and(
-            eq(embeddingTable.workspaceId, workspaceId),
-            inArray(embeddingTable.path, batch),
-            eq(embeddingTable.model, embeddingModel.id),
+            eq(this.table.workspaceId, workspaceId),
+            inArray(this.table.path, batch),
+            eq(this.table.model, embeddingModel.id),
           ),
         )
 
@@ -541,13 +558,13 @@ export class VectorRepository {
   ): Promise<number> {
     const result = await this.db
       .select({
-        count: sql<number>`COUNT(DISTINCT ${embeddingTable.path})`
+        count: sql<number>`COUNT(DISTINCT ${this.table.path})`
       })
-      .from(embeddingTable)
+      .from(this.table)
       .where(
         and(
-          eq(embeddingTable.workspaceId, workspaceId),
-          eq(embeddingTable.model, embeddingModel.id),
+          eq(this.table.workspaceId, workspaceId),
+          eq(this.table.model, embeddingModel.id),
         ),
       )
 
@@ -562,11 +579,11 @@ export class VectorRepository {
       .select({
         count: count()
       })
-      .from(embeddingTable)
+      .from(this.table)
       .where(
         and(
-          eq(embeddingTable.workspaceId, workspaceId),
-          eq(embeddingTable.model, embeddingModel.id),
+          eq(this.table.workspaceId, workspaceId),
+          eq(this.table.model, embeddingModel.id),
         ),
       )
 
@@ -579,13 +596,13 @@ export class VectorRepository {
   ): Promise<string[]> {
     const results = await this.db
       .selectDistinct({
-        path: embeddingTable.path
+        path: this.table.path
       })
-      .from(embeddingTable)
+      .from(this.table)
       .where(
         and(
-          eq(embeddingTable.workspaceId, workspaceId),
-          eq(embeddingTable.model, embeddingModel.id),
+          eq(this.table.workspaceId, workspaceId),
+          eq(this.table.model, embeddingModel.id),
         ),
       )
 
@@ -607,14 +624,14 @@ export class VectorRepository {
     }
 
     const placeholders = existingFilePaths.map((path) => `'${path.replace(/'/g, "''")}'`).join(',')
-    const notInCondition = sql.raw(`${embeddingTable.path.name} NOT IN (${placeholders})`)
+    const notInCondition = sql.raw(`${this.table.path.name} NOT IN (${placeholders})`)
 
     await this.db
-      .delete(embeddingTable)
+      .delete(this.table)
       .where(
         and(
-          eq(embeddingTable.workspaceId, workspaceId),
-          eq(embeddingTable.model, embeddingModel.id),
+          eq(this.table.workspaceId, workspaceId),
+          eq(this.table.model, embeddingModel.id),
           notInCondition
         )
       )
