@@ -472,8 +472,9 @@ export class VectorManager {
           await this.progressLogger.logComplete(contentChunks.length, filesToIndex.length, durationSeconds)
         }
       } finally {
-        // Always recreate the HNSW index if we dropped it
-        if (droppedIndex) {
+        // For full rebuilds, always create the HNSW index after inserts —
+        // whether or not one existed before (fresh workspace table has no index yet).
+        if (shouldManageIndex) {
           await this.createVectorIndex(embeddingModel.dimension)
         }
       }
