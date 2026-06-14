@@ -13,6 +13,7 @@ import { Pool } from 'pg'
 import { createRAGEngineFromConfig } from './core/rag-engine.js'
 import { IndexManagerRegistry } from './utils/index-manager-registry.js'
 import { generateWorkspaceId } from './utils/workspace-utils.js'
+import { workspaceTableName } from './database/schema.js'
 import type { SearchResult, QueryProgressState, CancellationController } from './types/rag.types.js'
 
 interface ParsedArgs {
@@ -60,13 +61,28 @@ async function findWorkspace(startPath: string): Promise<string> {
     let current = resolve(startPath)
     while (true) {
       const workspaceId = generateWorkspaceId(current)
-      const result = await pool.query(
-        'SELECT 1 FROM embeddings WHERE workspace_id = $1 LIMIT 1',
-        [workspaceId]
-      )
-      if (result.rowCount && result.rowCount > 0) {
-        return current
+
+      // Check per-workspace table first (migrated workspaces)
+      let found = false
+      try {
+        const wsTable = workspaceTableName(workspaceId)
+        const wsResult = await pool.query(`SELECT 1 FROM ${wsTable} LIMIT 1`)
+        found = (wsResult.rowCount ?? 0) > 0
+      } catch {
+        // Table does not exist; fall through to legacy check
       }
+
+      // Fall back to legacy shared table
+      if (!found) {
+        const result = await pool.query(
+          'SELECT 1 FROM embeddings WHERE workspace_id = $1 LIMIT 1',
+          [workspaceId]
+        )
+        found = (result.rowCount ?? 0) > 0
+      }
+
+      if (found) return current
+
       const parent = dirname(current)
       if (parent === current) {
         throw new Error(
