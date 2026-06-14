@@ -13,7 +13,7 @@ import { Pool } from 'pg'
 import { createRAGEngineFromConfig } from './core/rag-engine.js'
 import { IndexManagerRegistry } from './utils/index-manager-registry.js'
 import { generateWorkspaceId } from './utils/workspace-utils.js'
-import type { SearchResult, QueryProgressState } from './types/rag.types.js'
+import type { SearchResult, QueryProgressState, CancellationController } from './types/rag.types.js'
 
 interface ParsedArgs {
   options: Record<string, string>
@@ -204,13 +204,55 @@ async function cmdUpdateIndex(workspacePath: string, reindexAll: boolean): Promi
   // Direct execution
   console.error(`[lkrag] Starting ${label} for workspace: ${workspacePath}`)
   const engine = await createRAGEngineFromConfig(workspacePath)
-  try {
-    await engine.updateVaultIndex({ reindexAll }, (progress) => {
-      renderProgress(progress)
-    })
+
+  let abortController = new AbortController()
+  const cancellationController: CancellationController = {
+    isCancelled: false,
+    get signal() { return abortController.signal },
+    cancel() {
+      this.isCancelled = true
+      abortController.abort()
+    },
+    reset() {
+      this.isCancelled = false
+      abortController = new AbortController()
+    },
+  }
+
+  const sigintHandler = () => {
     process.stderr.write('\n')
-    console.log(`Index ${label} complete.`)
+    console.error('[lkrag] Interrupted — finishing pending DB writes before exit...')
+    cancellationController.cancel()
+  }
+  process.on('SIGINT', sigintHandler)
+
+  try {
+    // Detect broken state: data exists but HNSW index was dropped (e.g. previous Ctrl-C)
+    let effectiveReindexAll = reindexAll
+    if (!effectiveReindexAll) {
+      const vm = engine.getVectorManager()
+      const [hasIndex, status] = await Promise.all([
+        vm.hasVectorIndex(),
+        engine.getIndexStatus(),
+      ])
+      if (!hasIndex && status.indexedFiles > 0) {
+        console.error('[lkrag] HNSW vector index is missing but indexed data exists.')
+        console.error('[lkrag] This can happen when a previous run was interrupted. Forcing full rebuild...')
+        effectiveReindexAll = true
+      }
+    }
+
+    await engine.updateVaultIndex({ reindexAll: effectiveReindexAll }, (progress) => {
+      renderProgress(progress)
+    }, cancellationController)
+    process.stderr.write('\n')
+    if (cancellationController.isCancelled) {
+      console.error('[lkrag] Index update cancelled.')
+    } else {
+      console.log(`Index ${label} complete.`)
+    }
   } finally {
+    process.off('SIGINT', sigintHandler)
     await engine.cleanup()
   }
 }
