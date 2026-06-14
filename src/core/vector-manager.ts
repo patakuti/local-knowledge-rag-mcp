@@ -1,6 +1,7 @@
 import { backOff } from 'exponential-backoff'
 import pg from 'pg'
 import { drizzle } from 'drizzle-orm/node-postgres'
+import type { NodePgDatabase } from 'drizzle-orm/node-postgres'
 import type {
   EmbeddingModelClient,
   IndexProgress,
@@ -13,7 +14,17 @@ import type {
 } from '../types/rag.types.js'
 import { EmbeddingError, IndexingError } from '../types/rag.types.js'
 import { VectorRepository } from './vector-repository.js'
-import { createEmbeddingsTableSQL, createVectorIndexSQL, dropVectorIndexSQL } from '../database/schema.js'
+import {
+  createEmbeddingTable,
+  createEmbeddingsTableSQL,
+  createVectorIndexSQL,
+  dropVectorIndexSQL,
+  workspaceTableName,
+  workspaceVectorIndexName,
+  createWorkspaceTableSQL,
+  createWorkspaceVectorIndexSQL,
+  dropWorkspaceVectorIndexSQL,
+} from '../database/schema.js'
 import { FileSystemUtils } from '../utils/file-utils.js'
 import { TextChunker, TextUtils } from '../utils/chunk-utils.js'
 import { ProgressLogger } from '../utils/progress-logger.js'
@@ -25,13 +36,17 @@ const { Pool } = pg
 
 export class VectorManager {
   private repository: VectorRepository
+  private legacyRepository: VectorRepository  // always targets the shared `embeddings` table
   private fileUtils: FileSystemUtils
   private textChunker: TextChunker
   private chunkingConfig: ChunkingConfig
   private pool: pg.Pool
+  private db: NodePgDatabase
   private workspacePath: string
   private workspaceId: string
   private progressLogger: ProgressLogger
+  private wsTableName: string              // e.g. embeddings_ws_7942de5f...
+  private usingWorkspaceTable: boolean = false
 
   constructor(
     workspacePath: string,
@@ -41,6 +56,7 @@ export class VectorManager {
     this.workspacePath = workspacePath
     this.workspaceId = generateWorkspaceId(workspacePath)
     this.chunkingConfig = chunkingConfig
+    this.wsTableName = workspaceTableName(this.workspaceId)
 
     // Use DATABASE_URL environment variable or provided connection string
     const connectionString = databaseUrl || process.env.DATABASE_URL
@@ -53,16 +69,50 @@ export class VectorManager {
     }
 
     this.pool = new Pool({ connectionString })
-    const drizzleDb = drizzle(this.pool)
+    this.db = drizzle(this.pool)
 
-    this.repository = new VectorRepository(drizzleDb)
+    this.legacyRepository = new VectorRepository(this.db)
+    this.repository = this.legacyRepository   // switched to ws repo after ensureWorkspaceTable()
     this.fileUtils = new FileSystemUtils(workspacePath)
     this.textChunker = new TextChunker(chunkingConfig)
     this.progressLogger = new ProgressLogger(this.workspaceId)
   }
 
+  /** Check whether a per-workspace table exists for this workspace. */
+  async hasWorkspaceTable(): Promise<boolean> {
+    const client = await this.pool.connect()
+    try {
+      const result = await client.query(`
+        SELECT EXISTS (
+          SELECT 1 FROM information_schema.tables
+          WHERE table_name = $1
+        ) AS exists
+      `, [this.wsTableName])
+      return result.rows[0]?.exists || false
+    } finally {
+      client.release()
+    }
+  }
+
+  /**
+   * Create the per-workspace table if it does not exist and switch
+   * this.repository to target it. Called at the start of rebuild-index.
+   */
+  private async ensureWorkspaceTable(): Promise<void> {
+    const client = await this.pool.connect()
+    try {
+      await client.query(createWorkspaceTableSQL(this.workspaceId))
+    } finally {
+      client.release()
+    }
+    const wsTable = createEmbeddingTable(this.wsTableName)
+    this.repository = new VectorRepository(this.db, wsTable)
+    this.usingWorkspaceTable = true
+    console.error(`[VectorManager] Using per-workspace table: ${this.wsTableName}`)
+  }
+
   async initialize(): Promise<void> {
-    // Create database tables and indexes
+    // Create legacy shared table and run any pending migrations
     const client = await this.pool.connect()
     try {
       await client.query(createEmbeddingsTableSQL)
@@ -98,6 +148,14 @@ export class VectorManager {
       client.release()
     }
 
+    // Switch to per-workspace table if it already exists (e.g. after a previous rebuild)
+    if (await this.hasWorkspaceTable()) {
+      const wsTable = createEmbeddingTable(this.wsTableName)
+      this.repository = new VectorRepository(this.db, wsTable)
+      this.usingWorkspaceTable = true
+      console.error(`[VectorManager] Per-workspace table detected: ${this.wsTableName}`)
+    }
+
     // Initialize progress logger
     await this.progressLogger.initialize()
   }
@@ -106,18 +164,17 @@ export class VectorManager {
     await this.pool.end()
   }
 
-  /**
-   * Create vector similarity search index (HNSW)
-   * Should be called after inserting significant amount of data
-   */
-  async createVectorIndex(dimension: number = 1536): Promise<void> {
+  /** Create the HNSW index for the active table (workspace-specific or legacy). */
+  async createVectorIndex(dimension: number = 768): Promise<void> {
     const client = await this.pool.connect()
     try {
       console.error('Creating HNSW vector index... This may take a few minutes.')
-      await client.query(createVectorIndexSQL(dimension))
+      const sql = this.usingWorkspaceTable
+        ? createWorkspaceVectorIndexSQL(this.workspaceId)
+        : createVectorIndexSQL(dimension)
+      await client.query(sql)
       console.error('Vector index created successfully.')
     } catch (error) {
-      // If index already exists, that's okay
       if (error instanceof Error && error.message.includes('already exists')) {
         console.error('Vector index already exists.')
       } else {
@@ -128,34 +185,33 @@ export class VectorManager {
     }
   }
 
-  /**
-   * Drop vector similarity search index (HNSW)
-   * Used before bulk inserts to avoid per-row HNSW index maintenance overhead
-   */
+  /** Drop the HNSW index for the active table. */
   async dropVectorIndex(): Promise<void> {
     const client = await this.pool.connect()
     try {
       console.error('Dropping HNSW vector index for bulk insert performance...')
-      await client.query(dropVectorIndexSQL)
+      const sql = this.usingWorkspaceTable
+        ? dropWorkspaceVectorIndexSQL(this.workspaceId)
+        : dropVectorIndexSQL
+      await client.query(sql)
       console.error('Vector index dropped.')
     } finally {
       client.release()
     }
   }
 
-  /**
-   * Check if vector index exists
-   */
+  /** Check whether the HNSW index exists for the active table. */
   async hasVectorIndex(): Promise<boolean> {
+    const indexName = this.usingWorkspaceTable
+      ? workspaceVectorIndexName(this.workspaceId)
+      : 'embeddings_embedding_idx'
     const client = await this.pool.connect()
     try {
       const result = await client.query(`
         SELECT EXISTS (
-          SELECT 1
-          FROM pg_indexes
-          WHERE indexname = 'embeddings_embedding_idx'
-        ) as exists
-      `)
+          SELECT 1 FROM pg_indexes WHERE indexname = $1
+        ) AS exists
+      `, [indexName])
       return result.rows[0]?.exists || false
     } finally {
       client.release()
@@ -211,7 +267,11 @@ export class VectorManager {
 
     try {
       if (options.reindexAll) {
-        // Full reindex: get all files and clear existing vectors
+        // Full reindex: ensure per-workspace table exists, then clear its data.
+        // Also remove any stale data from the legacy shared table so this workspace
+        // is fully migrated after the first rebuild.
+        await this.ensureWorkspaceTable()
+
         filesToIndex = await this.fileUtils.getFilesToIndex({
           includePatterns: options.includePatterns,
           excludePatterns: options.excludePatterns,
@@ -221,7 +281,10 @@ export class VectorManager {
           updateProgress?.({ completedChunks: 0, totalChunks: 0, totalFiles: 0, isCancelled: true })
           return
         }
+        // Clear workspace data from the active (workspace-specific) table
         await this.repository.clearAllVectors(this.workspaceId, embeddingModel)
+        // Also remove any remnants from the legacy shared table
+        await this.legacyRepository.clearAllVectors(this.workspaceId, embeddingModel)
       } else {
         // Incremental update: clean up deleted files first
         await this.deleteVectorsForDeletedFiles(embeddingModel, options)
@@ -376,10 +439,15 @@ export class VectorManager {
         completedFiles: 0,
       })
 
-      // Drop HNSW index before bulk inserts to avoid per-row index maintenance overhead.
-      // The index is recreated after all inserts complete (or on cancellation/error).
-      const BULK_INSERT_THRESHOLD = 100
-      const shouldManageIndex = contentChunks.length >= BULK_INSERT_THRESHOLD
+      // For full rebuilds: DROP the HNSW index before bulk-inserting all chunks
+      // and recreate it afterwards. This avoids per-row HNSW maintenance overhead
+      // during the large insert. Because rebuild targets a per-workspace table, the
+      // DROP/CREATE only affects this workspace's data and is fast.
+      //
+      // For incremental updates: keep the HNSW index alive. The per-row overhead is
+      // acceptable for small batches, and dropping a shared index (legacy table) or
+      // a workspace index mid-update would degrade search for the duration.
+      const shouldManageIndex = options.reindexAll ?? false
       let droppedIndex = false
 
       if (shouldManageIndex && await this.hasVectorIndex()) {
@@ -992,8 +1060,12 @@ export class VectorManager {
     console.error(`  - Model: ${embeddingModel.id}`)
     console.error(`  - Dimension: ${embeddingModel.dimension}`)
 
-    // Delete all vectors for this workspace
+    // Clear from the active table (workspace-specific or legacy)
     await this.repository.clearAllVectors(this.workspaceId, embeddingModel)
+    // Also clear from legacy table in case workspace was partially migrated
+    if (this.usingWorkspaceTable) {
+      await this.legacyRepository.clearAllVectors(this.workspaceId, embeddingModel)
+    }
 
     console.error(`✓ All embeddings deleted for workspace ${this.workspaceId}`)
     console.error(`✓ Other workspaces are not affected`)

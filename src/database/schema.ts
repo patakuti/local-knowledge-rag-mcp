@@ -49,33 +49,85 @@ export const supportedDimensionsForIndex = [
   128, 256, 384, 512, 768, 1024, 1280, 1536, 1792, 3072,
 ]
 
-export const embeddingTable = pgTable(
-  'embeddings',
-  {
+/**
+ * Create an embeddings table Drizzle schema with a given table name.
+ * Used for both the legacy shared table and per-workspace tables.
+ */
+export function createEmbeddingTable(tableName: string) {
+  return pgTable(tableName, {
     id: serial('id').primaryKey(),
-    workspaceId: text('workspace_id').notNull(), // workspace identifier
-    path: text('path').notNull(), // path to the file
-    mtime: bigint('mtime', { mode: 'number' }).notNull(), // mtime of the file
-    content: text('content').notNull(), // content of the chunk
-    model: text('model').notNull(), // model id
-    dimension: smallint('dimension').notNull(), // dimension of the vector
-    embedding: vector('embedding', { length: 768 }).notNull(), // embedding vector (768 for Ollama/ruri, 1536 for OpenAI small, 3072 for OpenAI large)
+    workspaceId: text('workspace_id').notNull(),
+    path: text('path').notNull(),
+    mtime: bigint('mtime', { mode: 'number' }).notNull(),
+    content: text('content').notNull(),
+    model: text('model').notNull(),
+    dimension: smallint('dimension').notNull(),
+    embedding: vector('embedding', { length: 768 }).notNull(),
     metadata: jsonb('metadata').notNull().$type<VectorMetaData>(),
-    configHash: text('config_hash'), // hash of embedding config (prefix settings etc.) for reindex detection
-  },
-  (table) => [
-    index('embeddings_workspace_id_index').on(table.workspaceId),
-    index('embeddings_path_index').on(table.path),
-    index('embeddings_model_index').on(table.model),
-    index('embeddings_dimension_index').on(table.dimension),
-  ],
-)
+    configHash: text('config_hash'),
+  })
+}
+
+// Legacy shared table — all workspaces that have not yet migrated use this
+export const embeddingTable = createEmbeddingTable('embeddings')
 
 export type SelectEmbedding = typeof embeddingTable.$inferSelect
 export type InsertEmbedding = typeof embeddingTable.$inferInsert
 
-// SQL for creating the embeddings table and indexes with pgvector
-// Note: Adjust vector dimension to match your embedding model (768, 1536, or 3072)
+// ── Per-workspace table helpers ───────────────────────────────────────────────
+
+/** Physical table name for a workspace-specific embeddings table */
+export function workspaceTableName(workspaceId: string): string {
+  return `embeddings_ws_${workspaceId}`
+}
+
+/** HNSW index name for a workspace-specific table */
+export function workspaceVectorIndexName(workspaceId: string): string {
+  return `${workspaceTableName(workspaceId)}_embedding_idx`
+}
+
+/** SQL to create a workspace-specific embeddings table */
+export function createWorkspaceTableSQL(workspaceId: string): string {
+  const t = workspaceTableName(workspaceId)
+  return `
+    CREATE TABLE IF NOT EXISTS ${t} (
+      id SERIAL PRIMARY KEY,
+      workspace_id TEXT NOT NULL,
+      path TEXT NOT NULL,
+      mtime BIGINT NOT NULL,
+      content TEXT NOT NULL,
+      model TEXT NOT NULL,
+      dimension SMALLINT NOT NULL,
+      embedding vector(768) NOT NULL,
+      metadata JSONB NOT NULL,
+      config_hash TEXT
+    );
+    CREATE INDEX IF NOT EXISTS ${t}_path_index ON ${t} (path);
+    CREATE INDEX IF NOT EXISTS ${t}_model_index ON ${t} (model);
+    CREATE INDEX IF NOT EXISTS ${t}_dimension_index ON ${t} (dimension);
+  `
+}
+
+/** SQL to create the HNSW index on a workspace-specific table */
+export function createWorkspaceVectorIndexSQL(workspaceId: string): string {
+  const t = workspaceTableName(workspaceId)
+  const idx = workspaceVectorIndexName(workspaceId)
+  return `
+    CREATE INDEX IF NOT EXISTS ${idx}
+    ON ${t}
+    USING hnsw (embedding vector_cosine_ops)
+    WITH (m = 16, ef_construction = 64);
+  `
+}
+
+/** SQL to drop the HNSW index on a workspace-specific table */
+export function dropWorkspaceVectorIndexSQL(workspaceId: string): string {
+  return `DROP INDEX IF EXISTS ${workspaceVectorIndexName(workspaceId)};`
+}
+
+// ── Legacy shared-table SQL (kept for backward compatibility) ─────────────────
+
+// SQL for creating the shared embeddings table and indexes with pgvector
 export const createEmbeddingsTableSQL = `
   -- Enable pgvector extension
   CREATE EXTENSION IF NOT EXISTS vector;
