@@ -72,7 +72,7 @@ function runSearch() {
     });
 
     qp.onDidAccept(() => {
-        const item = qp.selectedItems[0];
+        const item = qp.activeItems[0];
         if (item && item.filePath) {
             qp.hide();
             openFile(item.filePath, item.lineNo);
