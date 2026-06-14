@@ -6,8 +6,12 @@ const path = require('path');
 const os = require('os');
 const fs = require('fs');
 
+let out;
+
 function activate(context) {
+    out = vscode.window.createOutputChannel('lkrag');
     context.subscriptions.push(
+        out,
         vscode.commands.registerCommand('lkrag.search', runSearch)
     );
 }
@@ -90,7 +94,14 @@ function search(lkrag, query, workspacePath, limit, callback) {
     // traverses from the project root, not the extension host directory.
     const cwd = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath ?? os.homedir();
 
+    out.appendLine(`[lkrag] exec: ${lkrag} ${args.join(' ')}`);
+    out.appendLine(`[lkrag] cwd:  ${cwd}`);
+
     execFile(lkrag, args, { cwd }, (err, stdout, stderr) => {
+        if (stderr) out.appendLine(`[lkrag] stderr: ${stderr.trim()}`);
+        if (err)    out.appendLine(`[lkrag] error:  ${err.message} (code=${err.code})`);
+        if (stdout) out.appendLine(`[lkrag] stdout: ${stdout.substring(0, 200)}`);
+
         if (err && !stdout) {
             if (err.code === 'ENOENT') {
                 vscode.window.showErrorMessage(
@@ -130,6 +141,7 @@ function search(lkrag, query, workspacePath, limit, callback) {
                 };
             });
 
+        out.appendLine(`[lkrag] ${items.length} result(s)`);
         callback(items, resolvedWs);
     });
 }
