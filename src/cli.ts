@@ -227,9 +227,10 @@ async function cmdUpdateIndex(workspacePath: string, reindexAll: boolean): Promi
   process.on('SIGINT', sigintHandler)
 
   try {
-    // Detect broken state: data exists but HNSW index was dropped (e.g. previous Ctrl-C)
-    let effectiveReindexAll = reindexAll
-    if (!effectiveReindexAll) {
+    // Detect broken state: data exists but HNSW index was dropped (e.g. previous Ctrl-C).
+    // Repair by recreating the HNSW index without touching the data, then continue
+    // with a normal incremental update so already-indexed files are not re-processed.
+    if (!reindexAll) {
       const vm = engine.getVectorManager()
       const [hasIndex, status] = await Promise.all([
         vm.hasVectorIndex(),
@@ -237,12 +238,13 @@ async function cmdUpdateIndex(workspacePath: string, reindexAll: boolean): Promi
       ])
       if (!hasIndex && status.indexedFiles > 0) {
         console.error('[lkrag] HNSW vector index is missing but indexed data exists.')
-        console.error('[lkrag] This can happen when a previous run was interrupted. Forcing full rebuild...')
-        effectiveReindexAll = true
+        console.error('[lkrag] Recreating HNSW index on existing data before continuing...')
+        await vm.createVectorIndex()
+        console.error('[lkrag] HNSW index recreated. Resuming incremental update.')
       }
     }
 
-    await engine.updateVaultIndex({ reindexAll: effectiveReindexAll }, (progress) => {
+    await engine.updateVaultIndex({ reindexAll }, (progress) => {
       renderProgress(progress)
     }, cancellationController)
     process.stderr.write('\n')
