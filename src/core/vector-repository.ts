@@ -339,48 +339,44 @@ export class VectorRepository {
       similarity: number
     })[]
   > {
-    // Cosine similarity = 1 - cosine distance
     const vectorString = JSON.stringify(queryEmbedding)
+    // Fetch limit*2 rows to have headroom after minSimilarity filtering.
+    // ef_search must be >= fetchLimit so the HNSW index actually examines
+    // enough candidates (default ef_search=40 caps results regardless of LIMIT).
+    const fetchLimit = limit * 2
+    const efSearch = Math.max(40, fetchLimit)
 
-    // Build the query using pgvector's <=> operator
-    const results = await this.db
-      .select({
-        id: this.table.id,
-        workspaceId: this.table.workspaceId,
-        path: this.table.path,
-        mtime: this.table.mtime,
-        content: this.table.content,
-        model: this.table.model,
-        dimension: this.table.dimension,
-        metadata: this.table.metadata,
-        configHash: this.table.configHash,
-        distance: sql<number>`embedding <=> ${vectorString}::vector`.as('distance'),
-      })
-      .from(this.table)
-      .where(and(...whereConditions))
-      .orderBy(sql`embedding <=> ${vectorString}::vector`)
-      .limit(limit * 2) // Fetch more to account for similarity filtering
+    return await this.db.transaction(async (tx) => {
+      await tx.execute(sql.raw(`SET LOCAL hnsw.ef_search = ${efSearch}`))
 
-    // Convert distance to similarity and filter by minSimilarity
-    const resultsWithSimilarity = results
-      .map((row) => {
-        // Cosine similarity = 1 - cosine distance
-        const similarity = 1 - row.distance
+      const results = await tx
+        .select({
+          id: this.table.id,
+          workspaceId: this.table.workspaceId,
+          path: this.table.path,
+          mtime: this.table.mtime,
+          content: this.table.content,
+          model: this.table.model,
+          dimension: this.table.dimension,
+          metadata: this.table.metadata,
+          configHash: this.table.configHash,
+          distance: sql<number>`embedding <=> ${vectorString}::vector`.as('distance'),
+        })
+        .from(this.table)
+        .where(and(...whereConditions))
+        .orderBy(sql`embedding <=> ${vectorString}::vector`)
+        .limit(fetchLimit)
 
-        if (similarity < minSimilarity) {
-          return null
-        }
-
-        const { distance, ...rest } = row
-        return {
-          ...rest,
-          similarity
-        }
-      })
-      .filter((result): result is NonNullable<typeof result> => result !== null)
-      .slice(0, limit)
-
-    return resultsWithSimilarity
+      return results
+        .map((row) => {
+          const similarity = 1 - row.distance
+          if (similarity < minSimilarity) return null
+          const { distance, ...rest } = row
+          return { ...rest, similarity }
+        })
+        .filter((result): result is NonNullable<typeof result> => result !== null)
+        .slice(0, limit)
+    })
   }
 
   /**

@@ -394,16 +394,17 @@ Example: (setq rag-workspace-path \"~/etc/txt/myproject/\")")
   (interactive "sSearch: ")
   (let* ((explicit-workspace (and rag-workspace-path
                                   (expand-file-name rag-workspace-path)))
+         (current-dir (expand-file-name default-directory))
          (lkrag (or (executable-find "lkrag")
                     (expand-file-name "~/.npm-global/bin/lkrag")))
          (stderr-file (make-temp-file "lkrag-stderr"))
          (cmd (if explicit-workspace
-                  (format "%s search %s --format tsv --limit 20 --quiet --workspace-path %s 2>%s"
+                  (format "%s search %s --format tsv --limit 50 --quiet --workspace-path %s 2>%s"
                           lkrag
                           (shell-quote-argument query)
                           (shell-quote-argument explicit-workspace)
                           (shell-quote-argument stderr-file))
-                (format "%s search %s --format tsv --limit 20 --find-workspace 2>%s"
+                (format "%s search %s --format tsv --limit 50 --find-workspace 2>%s"
                         lkrag
                         (shell-quote-argument query)
                         (shell-quote-argument stderr-file))))
@@ -414,9 +415,26 @@ Example: (setq rag-workspace-path \"~/etc/txt/myproject/\")")
                    (delete-file stderr-file)))
          (found-workspace (when (string-match "^\\[lkrag\\] workspace: \\(.*\\)" stderr)
                             (match-string 1 stderr)))
-         (display-root (or explicit-workspace found-workspace default-directory))
-         (tsv-lines (seq-filter (lambda (l) (string-match-p "\t" l))
-                                (split-string (string-trim output) "\n" t)))
+         ;; When --find-workspace returned a parent of current-dir, filter to current-dir
+         (filter-to-current (and (null explicit-workspace)
+                                 found-workspace
+                                 (not (string= (file-truename found-workspace)
+                                               (file-truename current-dir)))))
+         ;; expand-root: workspace root used to resolve lkrag's relative paths
+         ;; display-root: shown in From: header and used for file-relative-name
+         (expand-root (or explicit-workspace found-workspace current-dir))
+         (display-root (if filter-to-current current-dir expand-root))
+         (all-tsv-lines (seq-filter (lambda (l) (string-match-p "\t" l))
+                                    (split-string (string-trim output) "\n" t)))
+         (tsv-lines (if filter-to-current
+                        (seq-filter
+                         (lambda (line)
+                           (let* ((parts (split-string line "\t"))
+                                  (path (expand-file-name (nth 0 parts) expand-root)))
+                             (string-prefix-p (file-truename current-dir)
+                                              (file-truename path))))
+                         all-tsv-lines)
+                      all-tsv-lines))
          (buf (get-buffer-create "*rag-results*")))
     (with-current-buffer buf
       (let ((inhibit-read-only t))
@@ -428,7 +446,7 @@ Example: (setq rag-workspace-path \"~/etc/txt/myproject/\")")
             (insert "No results found.\n")
           (dolist (line tsv-lines)
             (let* ((parts   (split-string line "\t"))
-                   (path    (expand-file-name (nth 0 parts) display-root))
+                   (path    (expand-file-name (nth 0 parts) expand-root))
                    (lineno  (string-to-number (nth 1 parts)))
                    (score   (nth 2 parts))
                    (content (nth 3 parts))
@@ -452,6 +470,7 @@ Example: (setq rag-workspace-path \"~/etc/txt/myproject/\")")
 Notes:
 - `rag-workspace-path` — set only when the indexed root differs from the directory you work in. When nil, `--find-workspace` locates the nearest indexed ancestor automatically.
 - When `--find-workspace` is used, lkrag prints the resolved workspace path to stderr (`[lkrag] workspace: /path/to/ws`). The Emacs integration captures this via a temp file to display the correct `From:` path and compute relative paths accurately.
+- When `--find-workspace` resolves to a parent of `default-directory` (i.e. the current directory is not itself indexed), results are automatically filtered to files under `default-directory`. The search fetches 50 candidates upfront to leave enough headroom after filtering. `From:` and relative paths are shown relative to `default-directory` in this case.
 - `expand-file-name` ensures `~` is resolved before passing to the shell, avoiding single-quote quoting issues.
 - The `*rag-results*` buffer persists across searches; each new search overwrites it.
 

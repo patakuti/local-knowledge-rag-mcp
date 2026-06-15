@@ -59,6 +59,7 @@
   - Vector CRUD operations
   - Automatic detection of embedding column type (vector vs JSONB)
   - **pgvector mode**: Fast similarity search using native <=> operator (when embedding column is vector type)
+    - Sets `hnsw.ef_search = max(40, limit*2)` per query via `SET LOCAL` inside a transaction so the HNSW index examines enough candidates (default ef_search=40 would otherwise cap results regardless of LIMIT)
   - **JSONB fallback mode**: JavaScript-based cosine similarity calculation (for backward compatibility with JSONB embeddings)
   - Seamless migration path: automatically uses optimal method based on schema
   - Efficient vector distance calculations in PostgreSQL
