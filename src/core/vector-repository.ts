@@ -347,7 +347,7 @@ export class VectorRepository {
     const efSearch = Math.max(40, fetchLimit)
 
     return await this.db.transaction(async (tx) => {
-      await tx.execute(sql`SET LOCAL hnsw.ef_search = ${efSearch}`)
+      await tx.execute(sql.raw(`SET LOCAL hnsw.ef_search = ${efSearch}`))
 
       const results = await tx
         .select({
