@@ -420,17 +420,17 @@ Example: (setq rag-workspace-path \"~/etc/txt/myproject/\")")
                                  found-workspace
                                  (not (string= (file-truename found-workspace)
                                                (file-truename current-dir)))))
-         (display-root (if filter-to-current
-                           current-dir
-                         (or explicit-workspace found-workspace current-dir)))
+         ;; expand-root: workspace root used to resolve lkrag's relative paths
+         ;; display-root: shown in From: header and used for file-relative-name
+         (expand-root (or explicit-workspace found-workspace current-dir))
+         (display-root (if filter-to-current current-dir expand-root))
          (all-tsv-lines (seq-filter (lambda (l) (string-match-p "\t" l))
                                     (split-string (string-trim output) "\n" t)))
          (tsv-lines (if filter-to-current
                         (seq-filter
                          (lambda (line)
                            (let* ((parts (split-string line "\t"))
-                                  (path (expand-file-name (nth 0 parts)
-                                                          (or found-workspace current-dir))))
+                                  (path (expand-file-name (nth 0 parts) expand-root)))
                              (string-prefix-p (file-truename current-dir)
                                               (file-truename path))))
                          all-tsv-lines)
@@ -446,7 +446,7 @@ Example: (setq rag-workspace-path \"~/etc/txt/myproject/\")")
             (insert "No results found.\n")
           (dolist (line tsv-lines)
             (let* ((parts   (split-string line "\t"))
-                   (path    (expand-file-name (nth 0 parts) display-root))
+                   (path    (expand-file-name (nth 0 parts) expand-root))
                    (lineno  (string-to-number (nth 1 parts)))
                    (score   (nth 2 parts))
                    (content (nth 3 parts))
