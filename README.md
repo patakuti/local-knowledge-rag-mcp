@@ -321,7 +321,7 @@ Results are displayed in a persistent `*rag-results*` buffer.
 |-----|--------|
 | `n` / `p` | Next/previous result — previews the file in other window, focus stays on results |
 | `RET` | Open selected file full-screen (`delete-other-windows`) |
-| `.` | Open file at point in other window (focus switches to file) |
+| `.` | Open file at point in other window (focus stays on results) |
 | `,` | Close (kill) the buffer of the file at point |
 | `q` | Close results buffer |
 
@@ -370,12 +370,13 @@ Example: (setq rag-workspace-path \"~/etc/txt/myproject/\")")
     (delete-other-windows)))
 
 (defun rag-results-open-other-window ()
-  "Open result at point in other window, switching focus there."
+  "Open result at point in other window; focus stays on results buffer."
   (interactive)
   (when-let ((loc (rag-results--loc)))
-    (find-file-other-window (car loc))
-    (goto-line (cdr loc))
-    (recenter)))
+    (save-selected-window
+      (find-file-other-window (car loc))
+      (goto-line (cdr loc))
+      (recenter))))
 
 (defun rag-results-close ()
   "Kill the buffer visiting the file at point."
