@@ -321,6 +321,8 @@ Results are displayed in a persistent `*rag-results*` buffer.
 |-----|--------|
 | `n` / `p` | Next/previous result — previews the file in other window, focus stays on results |
 | `RET` | Open selected file full-screen (`delete-other-windows`) |
+| `.` | Open file at point in other window (focus switches to file) |
+| `,` | Close (kill) the buffer of the file at point |
 | `q` | Close results buffer |
 
 ```elisp
@@ -337,6 +339,8 @@ Example: (setq rag-workspace-path \"~/etc/txt/myproject/\")")
     (define-key map (kbd "n")   #'rag-results-next)
     (define-key map (kbd "p")   #'rag-results-prev)
     (define-key map (kbd "RET") #'rag-results-open)
+    (define-key map (kbd ".")   #'rag-results-open-other-window)
+    (define-key map (kbd ",")   #'rag-results-close)
     (define-key map (kbd "q")   #'quit-window)
     map))
 
@@ -364,6 +368,21 @@ Example: (setq rag-workspace-path \"~/etc/txt/myproject/\")")
     (goto-line (cdr loc))
     (recenter)
     (delete-other-windows)))
+
+(defun rag-results-open-other-window ()
+  "Open result at point in other window, switching focus there."
+  (interactive)
+  (when-let ((loc (rag-results--loc)))
+    (find-file-other-window (car loc))
+    (goto-line (cdr loc))
+    (recenter)))
+
+(defun rag-results-close ()
+  "Kill the buffer visiting the file at point."
+  (interactive)
+  (when-let ((loc (rag-results--loc)))
+    (when-let ((buf (find-buffer-visiting (car loc))))
+      (kill-buffer buf))))
 
 (defun rag-results-next ()
   "Move to the next result and preview it."
