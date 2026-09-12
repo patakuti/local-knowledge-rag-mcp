@@ -620,6 +620,12 @@ Contributions are welcome! Please see [CONTRIBUTING.md](CONTRIBUTING.md) for gui
 
 ---
 
+## About this project
+
+This tool was designed and implemented entirely by Claude. The human provided the idea. However, this isn't a one-shot output; the human shaped it through hands-on testing and iterative, detail-oriented feedback.
+
+---
+
 ## License
 
 MIT License - see [LICENSE](LICENSE) for details.
