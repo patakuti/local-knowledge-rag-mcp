@@ -31,6 +31,7 @@ import { ProgressLogger } from '../utils/progress-logger.js'
 import { generateWorkspaceId } from '../utils/workspace-utils.js'
 import { sanitizePath } from '../utils/log-sanitizer.js'
 import { parseFrontmatter, hasObsoleteTag } from '../utils/frontmatter-utils.js'
+import { loadPatternTagRules, isObsoleteByPatterns, type PatternTagRule } from '../utils/pattern-tags.js'
 import path from 'path'
 
 const { Pool } = pg
@@ -263,6 +264,7 @@ export class VectorManager {
   ): Promise<void> {
     const startTime = Date.now()
     let filesToIndex: FileInfo[]
+    const patternRules = loadPatternTagRules(this.workspacePath)
 
     console.error(`[updateVaultIndex] Starting ${options.reindexAll ? 'full' : 'incremental'} index update`)
 
@@ -315,17 +317,22 @@ export class VectorManager {
         }
 
         // Get files that need indexing (new or modified)
-        filesToIndex = await this.getFilesToIndex({
+        const { toReindex, unchanged } = await this.getFilesToIndex({
           embeddingModel,
           includePatterns: options.includePatterns,
           excludePatterns: options.excludePatterns,
         })
+        filesToIndex = toReindex
 
         if (cancellationController?.isCancelled) {
           await this.progressLogger.logCancelled(0, 0, 0, 0)
           updateProgress?.({ completedChunks: 0, totalChunks: 0, totalFiles: 0, isCancelled: true })
           return
         }
+
+        // Bring metadata.obsolete up to date for files that aren't being re-chunked this
+        // run, so a .lkragtags.yml edit takes effect without a full rebuild
+        await this.refreshObsoleteFlags(unchanged, embeddingModel, patternRules)
 
         // Remove existing vectors for files that will be reindexed
         if (filesToIndex.length > 0) {
@@ -352,7 +359,7 @@ export class VectorManager {
 
       // Read and chunk files
       const maxFileSizeKB = options.maxFileSizeKB || 512
-      const { contentChunks, failedFiles, skippedFiles } = await this.prepareContentChunks(filesToIndex, maxFileSizeKB)
+      const { contentChunks, failedFiles, skippedFiles } = await this.prepareContentChunks(filesToIndex, maxFileSizeKB, patternRules)
       console.error(`[updateVaultIndex] ${contentChunks.length} chunks from ${filesToIndex.length} files (${skippedFiles.length} skipped, ${failedFiles.length} failed)`)
 
       // Check for cancellation after preparing chunks
@@ -597,7 +604,7 @@ export class VectorManager {
     embeddingModel: EmbeddingModelClient
     includePatterns: string[]
     excludePatterns: string[]
-  }): Promise<FileInfo[]> {
+  }): Promise<{ toReindex: FileInfo[]; unchanged: FileInfo[] }> {
     // Get all files matching patterns
     const allFiles = await this.fileUtils.getFilesToIndex({
       includePatterns: options.includePatterns,
@@ -613,7 +620,56 @@ export class VectorManager {
     )
 
     // Filter to files that need reindexing
-    return this.fileUtils.getFilesToReindex(allFiles, indexedMtimes)
+    const toReindex = await this.fileUtils.getFilesToReindex(allFiles, indexedMtimes)
+
+    // Already-indexed files that don't need re-chunking/re-embedding this run
+    // (still relevant for the obsolete-flag refresh pass, see refreshObsoleteFlags)
+    const toReindexPaths = new Set(toReindex.map(file => file.path))
+    const unchanged = allFiles.filter(file => indexedMtimes.has(file.path) && !toReindexPaths.has(file.path))
+
+    return { toReindex, unchanged }
+  }
+
+  /**
+   * Bring `metadata.obsolete` up to date for already-indexed files that aren't being
+   * re-chunked/re-embedded this run, so a `.lkragtags.yml` edit (or a frontmatter edit that
+   * doesn't happen to change file content otherwise) takes effect on the next incremental
+   * update without requiring a full rebuild. Only reads frontmatter — no chunking/embedding.
+   */
+  private async refreshObsoleteFlags(
+    unchangedFiles: FileInfo[],
+    embeddingModel: EmbeddingModelClient,
+    patternRules: PatternTagRule[],
+  ): Promise<void> {
+    if (unchangedFiles.length === 0) return
+
+    const currentlyObsolete = await this.repository.getObsoletePaths(this.workspaceId, embeddingModel)
+    const toMarkObsolete: string[] = []
+    const toClearObsolete: string[] = []
+
+    for (const file of unchangedFiles) {
+      let frontmatter: Record<string, unknown> | null = null
+      try {
+        const content = await this.fileUtils.readFileContent(file.path)
+        frontmatter = parseFrontmatter(content).data
+      } catch {
+        continue // Unreadable file: leave its stored flag as-is
+      }
+
+      const obsolete = hasObsoleteTag(frontmatter) || isObsoleteByPatterns(file.path, patternRules)
+      const wasObsolete = currentlyObsolete.has(file.path)
+      if (obsolete && !wasObsolete) toMarkObsolete.push(file.path)
+      else if (!obsolete && wasObsolete) toClearObsolete.push(file.path)
+    }
+
+    if (toMarkObsolete.length > 0) {
+      console.error(`[refreshObsoleteFlags] Marking ${toMarkObsolete.length} file(s) obsolete`)
+      await this.repository.setObsoleteFlag(this.workspaceId, toMarkObsolete, embeddingModel, true)
+    }
+    if (toClearObsolete.length > 0) {
+      console.error(`[refreshObsoleteFlags] Clearing obsolete flag for ${toClearObsolete.length} file(s)`)
+      await this.repository.setObsoleteFlag(this.workspaceId, toClearObsolete, embeddingModel, false)
+    }
   }
 
   /**
@@ -650,7 +706,11 @@ export class VectorManager {
   /**
    * Read files and create content chunks
    */
-  private async prepareContentChunks(files: FileInfo[], maxFileSizeKB: number = 512): Promise<{
+  private async prepareContentChunks(
+    files: FileInfo[],
+    maxFileSizeKB: number = 512,
+    patternRules: PatternTagRule[] = [],
+  ): Promise<{
     contentChunks: ContentChunk[]
     failedFiles: Array<{ path: string; error: string; size?: number }>
     skippedFiles: Array<{ path: string; reason: string; size: number }>
@@ -693,7 +753,7 @@ export class VectorManager {
         // and check it for the reserved `obsolete` tag
         const { data: frontmatter, body } = parseFrontmatter(content)
         content = body
-        const obsolete = hasObsoleteTag(frontmatter)
+        const obsolete = hasObsoleteTag(frontmatter) || isObsoleteByPatterns(file.path, patternRules)
 
         // Extract text content based on file type
         const ext = path.extname(file.path)

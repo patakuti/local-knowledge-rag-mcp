@@ -1,4 +1,5 @@
 import { parse as parseYaml } from 'yaml'
+import { tagsFromYamlValue, isObsoleteTag } from './tag-utils.js'
 
 const FRONTMATTER_RE = /^﻿?---[ \t]*\r?\n([\s\S]*?)\r?\n(?:---|\.\.\.)[ \t]*(?:\r?\n|$)/
 
@@ -22,30 +23,11 @@ export function parseFrontmatter(content: string): { data: Record<string, unknow
   return { data: data as Record<string, unknown>, body: content.slice(match[0].length) }
 }
 
-/** Accepts the same shapes frontmatter `tags:`/`tag:` values come in: an array, or a comma/space-separated string. */
-function tagsFromYamlValue(value: unknown): string[] {
-  if (Array.isArray(value)) {
-    return value.filter((v) => typeof v === 'string' || typeof v === 'number').map(String)
-  }
-  if (typeof value === 'string') return value.split(/[,\s]+/)
-  if (typeof value === 'number') return [String(value)]
-  return []
-}
-
-function normalizeTag(raw: string): string {
-  return raw.trim().replace(/^#+/, '').normalize('NFKC').toLowerCase()
-}
-
 /**
  * Whether a document's frontmatter carries the reserved `obsolete` tag (via `tags:` or `tag:`).
- * This is the only tag value this project currently recognizes — not a general tagging system.
  */
 export function hasObsoleteTag(data: Record<string, unknown> | null): boolean {
   if (!data) return false
-  for (const key of ['tags', 'tag']) {
-    for (const raw of tagsFromYamlValue(data[key])) {
-      if (normalizeTag(raw) === 'obsolete') return true
-    }
-  }
-  return false
+  const tags = [...tagsFromYamlValue(data.tags), ...tagsFromYamlValue(data.tag)]
+  return isObsoleteTag(tags)
 }

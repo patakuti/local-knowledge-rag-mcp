@@ -550,6 +550,60 @@ export class VectorRepository {
     return mtimeMap
   }
 
+  /** Workspace-relative paths of files currently flagged `metadata.obsolete === true`. */
+  async getObsoletePaths(
+    workspaceId: string,
+    embeddingModel: EmbeddingModelClient,
+  ): Promise<Set<string>> {
+    const results = await this.db
+      .selectDistinct({ path: this.table.path })
+      .from(this.table)
+      .where(
+        and(
+          eq(this.table.workspaceId, workspaceId),
+          eq(this.table.model, embeddingModel.id),
+          sql`${this.table.metadata}->>'obsolete' = 'true'`,
+        ),
+      )
+
+    return new Set(results.map(r => r.path))
+  }
+
+  /**
+   * Set or clear `metadata.obsolete` for the given files' chunks without touching any other
+   * field (no re-chunking/re-embedding). Used by the obsolete-flag refresh pass so a
+   * `.lkragtags.yml` edit takes effect on the next incremental update.
+   */
+  async setObsoleteFlag(
+    workspaceId: string,
+    filePaths: string[],
+    embeddingModel: EmbeddingModelClient,
+    obsolete: boolean,
+  ): Promise<void> {
+    if (filePaths.length === 0) return
+
+    // Each filePath is 1 parameter, plus 2 fixed parameters (workspaceId, model).
+    // Batch to stay well under PostgreSQL's 65,535 parameter limit.
+    const BATCH_SIZE = 20000
+    for (let i = 0; i < filePaths.length; i += BATCH_SIZE) {
+      const batch = filePaths.slice(i, i + BATCH_SIZE)
+      await this.db
+        .update(this.table)
+        .set({
+          metadata: obsolete
+            ? sql`jsonb_set(${this.table.metadata}, '{obsolete}', 'true'::jsonb)`
+            : sql`(${this.table.metadata} - 'obsolete')`,
+        })
+        .where(
+          and(
+            eq(this.table.workspaceId, workspaceId),
+            inArray(this.table.path, batch),
+            eq(this.table.model, embeddingModel.id),
+          ),
+        )
+    }
+  }
+
   async getTotalIndexedFiles(
     workspaceId: string,
     embeddingModel: EmbeddingModelClient,
