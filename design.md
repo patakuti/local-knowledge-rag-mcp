@@ -711,6 +711,50 @@ This MCP server provides **template schemas as MCP Resources**, allowing MCP cli
   - Duplicate patterns: `["hooks", "src/hooks"]` → Search with both patterns (OR condition)
   - Non-existent directory: No error, result count is 0
 
+## Obsolete-Tag Document Versioning
+
+- **Purpose**
+  - When a document is superseded by a newer version, avoid both overwriting the old file (which
+    would invalidate line numbers baked into previously generated reports' `file://` links) and
+    deleting it (which would break those links entirely)
+  - Lets a superseded document stay on disk, untouched, while being excluded from new searches
+
+- **Mechanism: a single reserved frontmatter tag, `obsolete`**
+  - Not a general-purpose tagging system — only the presence of the literal tag value `obsolete` is
+    recognized; other tag values are parsed but ignored
+  - Recognized frontmatter shapes: `tags: obsolete`, `tags: [obsolete]`, `tag: obsolete` (array or
+    comma/space-separated string values, matching the tag-value conventions of the sibling
+    lkrag-lite project's `.lkragtags.yml` feature)
+  - Reserved-word matching is case-insensitive and strips a leading `#`
+
+- **Implementation Details**
+  - `src/utils/frontmatter-utils.ts`
+    - `parseFrontmatter(content)`: detects a leading YAML frontmatter block (`---`...`---`/`...`),
+      parses it with the `yaml` package, and returns the parsed data plus the content with the
+      frontmatter block stripped (so raw YAML text never reaches embeddings/search)
+    - `hasObsoleteTag(data)`: checks `tags`/`tag` values for the reserved word
+  - `src/core/vector-manager.ts` (`prepareContentChunks`): for each file, frontmatter is parsed and
+    stripped before `TextUtils.extractTextContent()` runs; the resulting `obsolete` boolean is
+    threaded per-file into `TextChunker.createChunksForFiles()`
+  - `src/utils/chunk-utils.ts` (`TextChunker.createChunks`): when a file is obsolete, every resulting
+    chunk gets `metadata.obsolete = true`
+  - **No schema migration required**: the flag reuses the existing `metadata jsonb` column
+    (`src/database/schema.ts`), the same column that already stores the `skipped` flag for
+    unindexable files
+  - **Automatic pickup**: incremental re-indexing is purely mtime-based
+    (`src/utils/file-utils.ts`); editing a file's frontmatter bumps its mtime, so the file is
+    naturally re-chunked and re-embedded with the updated flag on the next `rebuild_index` or
+    auto-update — no special cache invalidation needed
+
+- **Search-Time Exclusion**
+  - `src/core/vector-repository.ts` (`performSimilaritySearch`): a SQL condition excludes chunks
+    with `metadata->>'obsolete' = 'true'`, added to the same `whereConditions` array as the existing
+    skipped-file exclusion, so both the pgvector and JSONB-fallback search paths apply it
+  - Unlike `scope.folders` (which needs JS-side glob matching), this is a plain equality check, so it
+    is done at the database level rather than as a JS post-filter
+  - Exclusion is unconditional today: `search_knowledge` has no override parameter to include
+    obsolete chunks (see Future Extension Possibilities)
+
 ## Multi-Workspace Support
 
 ### Overview
@@ -939,3 +983,5 @@ try {
 - Workspace management UI (list, switch, delete workspaces)
 - CLI: shell completion scripts (bash/zsh/fish)
 - CLI: `--watch` mode for streaming index progress
+- `search_knowledge`: an opt-in `include_obsolete` parameter to search obsolete-tagged documents on demand
+- Generalizing the reserved `obsolete` tag into a broader tagging system, if further tag-based needs arise

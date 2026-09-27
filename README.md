@@ -148,6 +148,7 @@ See [Usage Examples](#usage-examples) for more details.
 - **pgvector Extension**: High-performance vector similarity search with PostgreSQL
 - **HNSW Indexing**: Fast approximate nearest neighbor search for large datasets
 - **Flexible File Patterns**: Include/exclude file patterns for fine-grained control
+- **Obsolete-Tag Filtering**: Mark a superseded document `obsolete` in its frontmatter to exclude it from search while keeping it on disk, so links in previously generated reports keep working
 - **MCP Integration**: Seamless integration with Claude Code and other MCP clients
 - **Real-time Progress Tracking**: Web-based progress viewer showing live updates during index operations with percentage completion, file count, and current file being processed
 
@@ -217,6 +218,26 @@ Claude will automatically:
 **Advanced:** For direct MCP tool usage and detailed parameters, see [docs/mcp-tools.md](docs/mcp-tools.md).
 
 **Report customization:** Reports are saved to `./rag-reports/` by default. You can create custom templates (built-in: `basic`, `paper`, `bullet_points`, `manual`) - see [docs/templates.md](docs/templates.md).
+
+### Marking a Document Obsolete
+
+When a document is replaced by a newer version, avoid overwriting or deleting the old file — doing
+so would invalidate the `file://` links in any reports you already generated from it. Instead:
+
+1. Save the new version as a separate file (new name or new path).
+2. Add the reserved `obsolete` tag to the **old** file's frontmatter, without moving or deleting it:
+   ```markdown
+   ---
+   tags: obsolete
+   ---
+   ```
+   (`tags: [obsolete]` and a plain `tag: obsolete` are also recognized.)
+3. Run an index update (incremental is enough — editing the frontmatter updates the file's
+   modification time, so it's picked up automatically).
+
+Chunks from an `obsolete`-tagged file are excluded from `search_knowledge` results, but the file
+itself is left untouched on disk, so old reports that reference it keep resolving correctly. This is
+currently a single reserved tag value, not a general-purpose tagging system.
 
 ---
 
