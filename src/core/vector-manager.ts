@@ -30,6 +30,7 @@ import { TextChunker, TextUtils } from '../utils/chunk-utils.js'
 import { ProgressLogger } from '../utils/progress-logger.js'
 import { generateWorkspaceId } from '../utils/workspace-utils.js'
 import { sanitizePath } from '../utils/log-sanitizer.js'
+import { parseFrontmatter, hasObsoleteTag } from '../utils/frontmatter-utils.js'
 import path from 'path'
 
 const { Pool } = pg
@@ -656,7 +657,7 @@ export class VectorManager {
   }> {
     const failedFiles: Array<{ path: string; error: string; size?: number }> = []
     const skippedFiles: Array<{ path: string; reason: string; size: number }> = []
-    const fileContents: Array<{ path: string; content: string; mtime: number }> = []
+    const fileContents: Array<{ path: string; content: string; mtime: number; obsolete?: boolean }> = []
     const maxFileSizeBytes = maxFileSizeKB * 1024
 
     // Read all files
@@ -688,6 +689,12 @@ export class VectorManager {
       try {
         let content = await this.fileUtils.readFileContent(file.path)
 
+        // Strip leading YAML frontmatter (if any) before it reaches embeddings/search,
+        // and check it for the reserved `obsolete` tag
+        const { data: frontmatter, body } = parseFrontmatter(content)
+        content = body
+        const obsolete = hasObsoleteTag(frontmatter)
+
         // Extract text content based on file type
         const ext = path.extname(file.path)
         content = TextUtils.extractTextContent(content, ext, this.chunkingConfig.excludeCodeLanguages)
@@ -711,7 +718,8 @@ export class VectorManager {
         fileContents.push({
           path: file.path,
           content,
-          mtime: file.stat.mtime
+          mtime: file.stat.mtime,
+          ...(obsolete ? { obsolete: true } : {}),
         })
       } catch (error) {
         const errorMessage = error instanceof Error ? error.message : 'Unknown error'

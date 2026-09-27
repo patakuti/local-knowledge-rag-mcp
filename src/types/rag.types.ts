@@ -19,6 +19,8 @@ export type VectorMetaData = {
   skipped?: boolean
   reason?: string
   originalSize?: number
+  // Set when the source file's frontmatter carries the reserved `obsolete` tag
+  obsolete?: boolean
 }
 
 export type SearchResult = {

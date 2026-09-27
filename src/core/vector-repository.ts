@@ -297,6 +297,8 @@ export class VectorRepository {
       eq(this.table.model, embeddingModel.id),
       // Exclude skipped files (files with no indexable content)
       sql`(${this.table.metadata}->>'skipped' IS NULL OR ${this.table.metadata}->>'skipped' != 'true')`,
+      // Exclude documents tagged `obsolete` in frontmatter
+      sql`(${this.table.metadata}->>'obsolete' IS NULL OR ${this.table.metadata}->>'obsolete' != 'true')`,
     ]
 
     // Add scope conditions

@@ -22,7 +22,8 @@ export class TextChunker {
   async createChunks(
     content: string,
     filePath: string,
-    mtime: number
+    mtime: number,
+    obsolete?: boolean
   ): Promise<ContentChunk[]> {
     try {
       const documents = await this.splitter.createDocuments([content])
@@ -45,6 +46,7 @@ export class TextChunker {
         const metadata: VectorMetaData = {
           startLine,
           endLine,
+          ...(obsolete ? { obsolete: true } : {}),
         }
 
         return {
@@ -64,7 +66,8 @@ export class TextChunker {
         content,
         metadata: {
           startLine: 1,
-          endLine: content.split('\n').length
+          endLine: content.split('\n').length,
+          ...(obsolete ? { obsolete: true } : {}),
         }
       }]
     }
@@ -136,7 +139,7 @@ export class TextChunker {
    * Create chunks for multiple files
    */
   async createChunksForFiles(
-    files: Array<{ path: string; content: string; mtime: number }>,
+    files: Array<{ path: string; content: string; mtime: number; obsolete?: boolean }>,
     onProgress?: (completedFiles: number, totalFiles: number, totalChunks: number) => void
   ): Promise<ContentChunk[]> {
     const allChunks: ContentChunk[] = []
@@ -146,7 +149,7 @@ export class TextChunker {
       const file = files[i]
 
       try {
-        const chunks = await this.createChunks(file.content, file.path, file.mtime)
+        const chunks = await this.createChunks(file.content, file.path, file.mtime, file.obsolete)
         allChunks.push(...chunks)
       } catch (error) {
         console.error(`Failed to create chunks for ${sanitizePathGeneric(file.path)}:`, error)
