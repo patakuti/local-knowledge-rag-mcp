@@ -239,6 +239,19 @@ Chunks from an `obsolete`-tagged file are excluded from `search_knowledge` resul
 itself is left untouched on disk, so old reports that reference it keep resolving correctly. This is
 currently a single reserved tag value, not a general-purpose tagging system.
 
+**Marking a whole directory obsolete:** to retire many files at once without editing each one's
+frontmatter, add a `.lkragtags.yml` file at the workspace root mapping glob patterns to tags:
+
+```yaml
+# .lkragtags.yml
+"docs/legacy/**": obsolete
+```
+
+This file is re-read on every index update (incremental included), so editing it takes effect on the
+next `rebuild_index` without needing to touch the files themselves. (This is the same filename and
+format as the sibling `lkrag-lite` project's tag feature, if you use both tools on the same
+workspace — only the `obsolete` value has meaning here.)
+
 ---
 
 ## Available MCP Tools
