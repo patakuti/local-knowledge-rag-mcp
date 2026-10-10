@@ -1,6 +1,6 @@
 {
   "name": "local-knowledge-rag-mcp",
-  "version": "1.0.0",
+  "version": "0.1.0",
   "description": "Local Knowledge RAG MCP Server - Semantic search and retrieval for local documents using vector embeddings",
   "main": "dist/mcp-server.js",
   "type": "module",

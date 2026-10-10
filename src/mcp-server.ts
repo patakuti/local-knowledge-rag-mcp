@@ -4,12 +4,16 @@ import { fileURLToPath } from 'url'
 import { dirname, join, resolve, relative } from 'path'
 import { config } from 'dotenv'
 import os from 'os'
+import { readFileSync, appendFileSync } from 'fs'
 import lockfile from 'proper-lockfile'
 
 // Load .env file from project root (one level up from dist/)
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = dirname(__filename)
 const envPath = join(__dirname, '..', '.env')
+const { version: PACKAGE_VERSION } = JSON.parse(
+  readFileSync(join(__dirname, '..', 'package.json'), 'utf-8')
+) as { version: string }
 const envResult = config({ path: envPath })
 
 // Warn if .env file is not found (but don't fail - env vars might be set elsewhere)
@@ -103,7 +107,7 @@ class SmartComposerRAGServer {
     this.server = new Server(
       {
         name: 'local-knowledge-rag',
-        version: '1.0.0',
+        version: PACKAGE_VERSION,
       },
       {
         capabilities: {
@@ -2330,7 +2334,6 @@ process.on('unhandledRejection', (reason, promise) => {
 const server = new SmartComposerRAGServer()
 
 // Debug: Log to file (conditional)
-import { appendFileSync } from 'fs'
 
 // Load debug settings from environment variables initially
 // These will be updated from workspace_settings after RAG engine initialization
